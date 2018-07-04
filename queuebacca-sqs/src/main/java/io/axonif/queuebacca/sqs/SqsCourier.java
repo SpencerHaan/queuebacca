@@ -14,31 +14,42 @@
  * limitations under the License.
  */
 
-package io.axonif.queuebacca;
+package io.axonif.queuebacca.sqs;
+
+import java.util.Collection;
+
+import io.axonif.queuebacca.MessageBin;
 
 /**
  * Represents a collection of {@link MessageBin MessageBins} with a root name.
  */
-public interface Courier {
+public interface SqsCourier {
 
     /**
-     * Gets the name of the {@link Courier}.
+     * Gets the name of the {@link SqsCourier}.
      *
      * @return the courier name.
      */
     String getName();
 
     /**
-     * Gets the {@link MessageBin} representing the processing bin for this {@link Courier}.
+     * Gets the {@link MessageBin} representing the processing bin for this {@link SqsCourier}.
      *
      * @return the processing bin
      */
     MessageBin getProcessingBin();
 
     /**
-     * Gets the {@link MessageBin} representing the recycling bin for this {@link Courier}.
+     * Gets the {@link MessageBin} representing the recycling bin for this {@link SqsCourier}.
      *
      * @return the recycling bin
      */
     MessageBin getRecyclingBin();
+
+    /**
+     * Gets a collection of {@link SqsTag SqsTags} related to this {@link SqsCourier}.
+     *
+     * @return the SQS tags
+     */
+    Collection<SqsTag> getTags();
 }

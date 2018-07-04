@@ -18,8 +18,10 @@ package io.axonif.queuebacca.sqs;
 
 import static java.util.Objects.requireNonNull;
 
+import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 import org.apache.commons.configuration.BaseConfiguration;
 import org.apache.commons.configuration.Configuration;
@@ -34,7 +36,8 @@ import com.amazonaws.services.sqs.model.QueueAttributeName;
 import com.amazonaws.services.sqs.model.QueueDeletedRecentlyException;
 import com.amazonaws.services.sqs.model.QueueNameExistsException;
 import com.amazonaws.services.sqs.model.SetQueueAttributesRequest;
-import io.axonif.queuebacca.Courier;
+import com.amazonaws.services.sqs.model.TagQueueRequest;
+
 import io.axonif.queuebacca.MessageBin;
 import io.axonif.queuebacca.exceptions.QueuebaccaConfigurationException;
 
@@ -100,13 +103,13 @@ public final class SqsCourierMessageBinRegistry {
     }
 
     /**
-     * Registers a {@link Courier Courier's} processing and recycling {@link MessageBin ViaMessageBins}.
+     * Registers a {@link SqsCourier Courier's} processing and recycling {@link MessageBin ViaMessageBins}.
      *
      * @param courier the courier containing the processing and recycling bins
      * @param configuration configuration for the courier's message bins
      * @return this object for method chaining
      */
-    public SqsCourierMessageBinRegistry register(Courier courier, Configuration configuration) {
+    public SqsCourierMessageBinRegistry register(SqsCourier courier, Configuration configuration) {
         requireNonNull(courier);
         requireNonNull(configuration);
 
@@ -121,9 +124,11 @@ public final class SqsCourierMessageBinRegistry {
         if (allowProvisioning) {
             SqsRedrivePolicy processingRedrivePolicy = new SqsRedrivePolicy(configuration.getInt("retries", DEFAULT_RETRIES), getQueueArn(recyclingQueueUrl));
             setQueueAttributes(processingQueueUrl, configuration.subset(SQS_QUEUE_PROCESSING), jsonSerializer.toJson(processingRedrivePolicy));
+            setTags(processingQueueUrl, courier.getTags());
 
             SqsRedrivePolicy recyclingRedrivePolicy = new SqsRedrivePolicy(configuration.getInt("retriesRecycling", DEFAULT_RETRIES_RECYCLING), getQueueArn(trashQueueUrl));
             setQueueAttributes(recyclingQueueUrl, configuration.subset(SQS_QUEUE_RECYCLING), jsonSerializer.toJson(recyclingRedrivePolicy));
+            setTags(recyclingQueueUrl, courier.getTags());
             LOGGER.info("Provisioned queues for courier '{}'", courier.getName());
         }
         return this;
@@ -183,4 +188,10 @@ public final class SqsCourierMessageBinRegistry {
         client.setQueueAttributes(attributesRequest);
     }
 
+    private void setTags(String queueUrl, Collection<SqsTag> tags) {
+        Map<String, String> tagMap = tags.stream().collect(Collectors.toMap(SqsTag::getKey, SqsTag::getValue));
+        TagQueueRequest tagQueueRequest = new TagQueueRequest(queueUrl, tagMap);
+
+        client.tagQueue(tagQueueRequest);
+    }
 }
