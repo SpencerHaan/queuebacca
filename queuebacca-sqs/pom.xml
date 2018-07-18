@@ -22,7 +22,7 @@
   <parent>
     <groupId>io.axonif</groupId>
     <artifactId>queuebacca</artifactId>
-    <version>0.0.0</version>
+    <version>0.0.1</version>
   </parent>
 
   <artifactId>queuebacca-sqs</artifactId>
@@ -33,7 +33,7 @@
     <dependency>
       <groupId>io.axonif</groupId>
       <artifactId>queuebacca-core</artifactId>
-      <version>0.0.0</version>
+      <version>0.0.1</version>
     </dependency>
     <dependency>
       <groupId>com.amazonaws</groupId>
