@@ -50,7 +50,6 @@ import io.axonif.queuebacca.util.MessageSerializer;
  */
 final class SqsMessageBatchSender<M extends Message> {
 
-    public static final long MAX_MESSAGE_SIZE = 1024 * 25; // 25KB
     public static final int MAX_BATCH_ENTRY_COUNT = 10;
 
     private final Collection<BatchEntry<M>> batchEntries = new ArrayList<>();
@@ -80,10 +79,6 @@ final class SqsMessageBatchSender<M extends Message> {
         requireNonNull(message);
 
         String messageBody = serializer.toString(message);
-        int messageSize = messageBody.getBytes().length;
-        if (messageSize > MAX_MESSAGE_SIZE) {
-            throw new QueuebaccaException("Message exceeds max size of {0}B ({1}B): {2}", MAX_MESSAGE_SIZE, messageSize, messageBody);
-        }
 
         BatchEntry<M> entry = new BatchEntry<>(message, messageBody);
         batchEntries.add(entry);

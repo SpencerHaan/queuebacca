@@ -76,18 +76,6 @@ public class SqsMessageBatchSenderTest {
 		assertEquals(expectedMessages, actualMessages);
 	}
 
-	@Test(expected = QueuebaccaException.class)
-	public void send_MessageTooBig() {
-		StringBuilder builder = new StringBuilder();
-		for (int i = 0; i <= SqsMessageBatchSender.MAX_MESSAGE_SIZE; i++) {
-			builder.append("0");
-		}
-		TestMessage testMessage = new TestMessage(builder.toString());
-
-		SqsMessageBatchSender<TestMessage> batchSender = new SqsMessageBatchSender<>(mockAmazonSQS, serializer, LOGGER);
-		batchSender.add(testMessage);
-	}
-
 	@Test
 	public void send_MessageRetry() {
 		when(mockAmazonSQS.sendMessageBatch(Matchers.any())).thenAnswer(invocation -> {

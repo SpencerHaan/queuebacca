@@ -16,11 +16,21 @@
 
 package io.axonif.queuebacca.sqs;
 
+import static java.util.Objects.requireNonNull;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+
+import org.slf4j.LoggerFactory;
+
 import com.amazonaws.services.sqs.AmazonSQS;
 import com.amazonaws.services.sqs.model.ChangeMessageVisibilityRequest;
 import com.amazonaws.services.sqs.model.DeleteMessageRequest;
 import com.amazonaws.services.sqs.model.ReceiveMessageRequest;
 import com.amazonaws.services.sqs.model.SendMessageRequest;
+
 import io.axonif.queuebacca.Client;
 import io.axonif.queuebacca.IncomingEnvelope;
 import io.axonif.queuebacca.Message;
@@ -28,14 +38,6 @@ import io.axonif.queuebacca.MessageBin;
 import io.axonif.queuebacca.OutgoingEnvelope;
 import io.axonif.queuebacca.exceptions.QueuebaccaException;
 import io.axonif.queuebacca.util.MessageSerializer;
-import org.slf4j.LoggerFactory;
-
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-
-import static java.util.Objects.requireNonNull;
 
 /**
  * An SQS implementation of {@link Client}.
@@ -48,7 +50,6 @@ public final class SqsClient implements Client {
     public static final int DEFAULT_SQS_CONNECTIONS = 200;
     public static final String DEFAULT_SQS_CONNECTIONS_PROPERTY = "maxConnections";
 
-    public static final long MAX_MESSAGE_SIZE_KB = 1024 * 256; // 256KB
     public static final int MAX_READ_COUNT = 10;
 
     private final AmazonSQS client;
@@ -79,10 +80,6 @@ public final class SqsClient implements Client {
         requireNonNull(message);
 
         String messageBody = serializer.toString(message);
-        int messageSize = messageBody.getBytes().length;
-        if (messageSize > MAX_MESSAGE_SIZE_KB) {
-            throw new QueuebaccaException("Message exceeds max size of {0}B ({1}B): {2}", MAX_MESSAGE_SIZE_KB, messageSize, messageBody);
-        }
 
         SendMessageRequest sqsRequest = new SendMessageRequest()
                 .withQueueUrl(messageBinRegistry.getQueueUrl(messageBin))
