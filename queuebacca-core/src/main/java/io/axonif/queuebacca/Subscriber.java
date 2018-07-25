@@ -27,7 +27,10 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import io.axonif.queuebacca.events.TimingEventListener;
+import io.axonif.queuebacca.events.TimingEventSupport;
 import io.axonif.queuebacca.util.MessageSerializer;
+
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 
 /**
@@ -40,6 +43,7 @@ public final class Subscriber {
 	private static final int SUBSCRIPTION_PERIODIC_DELAY = 1; // milliseconds
 
     private final List<ActiveSubscription<?>> activeSubscriptions = new ArrayList<>();
+    private final TimingEventSupport timingEventSupport = new TimingEventSupport();
 
     private final Client client;
     private final WorkExecutorFactory workExecutorFactory;
@@ -74,7 +78,7 @@ public final class Subscriber {
                 .build();
         WorkExecutor workExecutor = workExecutorFactory.newWorkExecutor(configuration.getMessageCapacity(), threadFactory);
 
-        ActiveSubscription<?> subscription = ActiveSubscription.start(configuration, client, workExecutor, exceptionResolver, messageSerializer);
+        ActiveSubscription<?> subscription = ActiveSubscription.start(configuration, client, workExecutor, exceptionResolver, messageSerializer, timingEventSupport);
         activeSubscriptions.add(subscription);
     }
 
@@ -84,6 +88,14 @@ public final class Subscriber {
 	public void cancelAll() {
         activeSubscriptions.forEach(ActiveSubscription::cancel);
     }
+
+	public void addTimingEventListener(TimingEventListener timingEventListener) {
+		timingEventSupport.addListener(timingEventListener);
+	}
+
+	public void removeTimingEventListener(TimingEventListener timingEventListener) {
+		timingEventSupport.removeListener(timingEventListener);
+	}
 
 	/**
 	 * An active subscription that periodically checks for new messages, distributing the consumption using a {@link ThreadPoolWorkExecutor}.
@@ -101,6 +113,7 @@ public final class Subscriber {
 		private final RetryDelayGenerator retryDelayGenerator;
 		private final MessageConsumer<M> consumer;
 		private final ExceptionResolver exceptionResolver;
+		private final TimingEventSupport timingEventSupport;
 
 		ActiveSubscription(
 				ScheduledExecutorService subscriptionScheduler, Client client,
@@ -109,6 +122,7 @@ public final class Subscriber {
 				RetryDelayGenerator retryDelayGenerator,
 				MessageConsumer<M> consumer,
 				ExceptionResolver exceptionResolver,
+				TimingEventSupport timingEventSupport,
 				Logger logger
 		) {
 			this.subscriptionScheduler = subscriptionScheduler;
@@ -118,6 +132,7 @@ public final class Subscriber {
 			this.retryDelayGenerator = retryDelayGenerator;
 			this.consumer = consumer;
 			this.exceptionResolver = exceptionResolver;
+			this.timingEventSupport = timingEventSupport;
 			this.logger = logger;
 		}
 
@@ -126,7 +141,8 @@ public final class Subscriber {
 				Client client,
 				WorkExecutor processingPool,
 				ExceptionResolver exceptionResolver,
-				MessageSerializer messageSerializer
+				MessageSerializer messageSerializer,
+				TimingEventSupport timingEventSupport
 		) {
 			ScheduledExecutorService subscriptionScheduler = Executors.newScheduledThreadPool(1, new ThreadFactoryBuilder()
 					.setNameFormat(configuration.getMessageBin().getName() + "-subscription-%d")
@@ -141,6 +157,7 @@ public final class Subscriber {
 					configuration.getRetryDelayGenerator(),
 					configuration.getMessageConsumer(),
 					exceptionResolver,
+					timingEventSupport,
 					logger
 			);
 
@@ -178,7 +195,13 @@ public final class Subscriber {
 			return () -> {
 				Context context = new Context(envelope.getMessageId(), envelope.getReadCount(), envelope.getFirstReceived());
 				try {
-					consumer.consume(envelope.getMessage(), context);
+					long start = System.currentTimeMillis();
+					try {
+						consumer.consume(envelope.getMessage(), context);
+					} finally {
+						long duration = System.currentTimeMillis() - start;
+						timingEventSupport.fireEvent(messageBin, envelope.getMessage().getClass(), envelope.getMessageId(), duration);
+					}
 					logger.info("Consumed '{}'; disposing", envelope.getMessageId());
 					client.disposeMessage(messageBin, envelope);
 				} catch (Exception e) {
