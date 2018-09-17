@@ -85,9 +85,9 @@
 
   <distributionManagement>
     <repository>
-      <id>central</id>
-      <name>art.axonify.net-releases</name>
-      <url>https://art.axonify.net:443/libs-release-local</url>
+      <id>bintray-spencerhaan-io.axonif</id>
+      <name>spencerhaan-io.axonif</name>
+      <url>https://api.bintray.com/maven/spencerhaan/io.axonif/queuebacca/;publish=1</url>
     </repository>
   </distributionManagement>
 
