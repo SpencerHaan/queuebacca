@@ -22,12 +22,42 @@
   <artifactId>queuebacca</artifactId>
   <version>0.1.0</version>
   <packaging>pom</packaging>
-  <name>queuebacca</name>
 
   <modules>
     <module>queuebacca-core</module>
     <module>queuebacca-sqs</module>
   </modules>
+
+  <name>queuebacca</name>
+  <description>An extensible framework for simplifying and enhancing the production and consumption of messages.</description>
+  <url>https://github.com/Axonify/queuebacca</url>
+  <licenses>
+    <license>
+      <name>The Apache Software License, Version 2.0</name>
+      <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+    </license>
+  </licenses>
+  <developers>
+    <developer>
+      <name>Spencer Haan</name>
+      <email>haan.spencer@gmail.com</email>
+      <organization>Axonify Inc.</organization>
+      <organizationUrl>https://axonify.com/</organizationUrl>
+    </developer>
+  </developers>
+  <scm>
+    <connection>https://github.com/Axonify/queuebacca.git</connection>
+    <developerConnection>https://github.com/Axonify/queuebacca.git</developerConnection>
+    <url>https://github.com/Axonify/queuebacca</url>
+  </scm>
+
+  <distributionManagement>
+    <repository>
+      <id>bintray-spencerhaan-io.axonif</id>
+      <name>spencerhaan-io.axonif</name>
+      <url>https://api.bintray.com/maven/spencerhaan/io.axonif/queuebacca/;publish=1</url>
+    </repository>
+  </distributionManagement>
 
   <dependencies>
     <dependency>
@@ -82,13 +112,5 @@
       </plugin>
     </plugins>
   </build>
-
-  <distributionManagement>
-    <repository>
-      <id>bintray-spencerhaan-io.axonif</id>
-      <name>spencerhaan-io.axonif</name>
-      <url>https://api.bintray.com/maven/spencerhaan/io.axonif/queuebacca/;publish=1</url>
-    </repository>
-  </distributionManagement>
 
 </project>
