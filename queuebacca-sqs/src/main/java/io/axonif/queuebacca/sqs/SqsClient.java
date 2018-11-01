@@ -18,11 +18,19 @@ package io.axonif.queuebacca.sqs;
 
 import static java.util.Objects.requireNonNull;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
+import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.amazonaws.services.sqs.AmazonSQS;
@@ -30,6 +38,7 @@ import com.amazonaws.services.sqs.model.ChangeMessageVisibilityRequest;
 import com.amazonaws.services.sqs.model.DeleteMessageRequest;
 import com.amazonaws.services.sqs.model.ReceiveMessageRequest;
 import com.amazonaws.services.sqs.model.SendMessageRequest;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 
 import io.axonif.queuebacca.Client;
 import io.axonif.queuebacca.IncomingEnvelope;
@@ -44,6 +53,14 @@ import io.axonif.queuebacca.util.MessageSerializer;
  */
 public final class SqsClient implements Client {
 
+    private static final ScheduledExecutorService REFRESH_SCHEDULER = Executors.newSingleThreadScheduledExecutor(new ThreadFactoryBuilder()
+            .setNameFormat("queuebacca-sqs-refresher")
+            .build());
+
+    static {
+        Runtime.getRuntime().addShutdownHook(new Thread(REFRESH_SCHEDULER::shutdownNow));
+    }
+
     private static final String APPROXIMATE_RECEIVE_COUNT_ATTRIBUTE = "ApproximateReceiveCount";
     private static final String APPROXIMATE_FIRST_RECEIVE_TIMESTAMP_ATTRIBUTE = "ApproximateFirstReceiveTimestamp";
 
@@ -52,6 +69,7 @@ public final class SqsClient implements Client {
 
     public static final int MAX_READ_COUNT = 10;
 
+    private final MessageRefresher refresher = new MessageRefresher();
     private final AmazonSQS client;
     private final MessageSerializer serializer;
     private final SqsCourierMessageBinRegistry messageBinRegistry;
@@ -132,6 +150,13 @@ public final class SqsClient implements Client {
             IncomingEnvelope<M> message = mapSqsMessage(sqsMessage);
             messages.add(message);
         }
+
+        messages.forEach(envelope -> refresher.scheduleRefresh(
+                envelope,
+                messageBinRegistry.getQueueUrl(messageBin),
+                messageBinRegistry.getVisibilityTimeout(messageBin),
+                LoggerFactory.getLogger(messageBin.getName()))
+        );
         return messages;
     }
 
@@ -143,11 +168,15 @@ public final class SqsClient implements Client {
         requireNonNull(messageBin);
         requireNonNull(incomingEnvelope);
 
-        ChangeMessageVisibilityRequest sqsRequest = new ChangeMessageVisibilityRequest()
-                .withQueueUrl(messageBinRegistry.getQueueUrl(messageBin))
-                .withReceiptHandle(requireNonNull(incomingEnvelope.getReceipt()))
-                .withVisibilityTimeout(delay);
-        client.changeMessageVisibility(sqsRequest);
+        try {
+            ChangeMessageVisibilityRequest sqsRequest = new ChangeMessageVisibilityRequest()
+                    .withQueueUrl(messageBinRegistry.getQueueUrl(messageBin))
+                    .withReceiptHandle(requireNonNull(incomingEnvelope.getReceipt()))
+                    .withVisibilityTimeout(delay);
+            client.changeMessageVisibility(sqsRequest);
+        } finally {
+            refresher.cancelRefresh(incomingEnvelope);
+        }
     }
 
     /**
@@ -155,10 +184,14 @@ public final class SqsClient implements Client {
      */
     @Override
     public void disposeMessage(MessageBin messageBin, IncomingEnvelope<?> incomingEnvelope) {
-        DeleteMessageRequest sqsRequest = new DeleteMessageRequest()
-                .withQueueUrl(messageBinRegistry.getQueueUrl(messageBin))
-                .withReceiptHandle(requireNonNull(incomingEnvelope.getReceipt()));
-        client.deleteMessage(sqsRequest);
+        try {
+            DeleteMessageRequest sqsRequest = new DeleteMessageRequest()
+                    .withQueueUrl(messageBinRegistry.getQueueUrl(messageBin))
+                    .withReceiptHandle(requireNonNull(incomingEnvelope.getReceipt()));
+            client.deleteMessage(sqsRequest);
+        } finally {
+            refresher.cancelRefresh(incomingEnvelope);
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -170,6 +203,34 @@ public final class SqsClient implements Client {
                 Instant.ofEpochMilli(Long.valueOf(sqsMessage.getAttributes().get(APPROXIMATE_FIRST_RECEIVE_TIMESTAMP_ATTRIBUTE))),
                 serializer.fromString(sqsMessage.getBody(), Message.class)
         );
+    }
+
+    private class MessageRefresher {
+
+        private final Map<IncomingEnvelope, Future<?>> futures = new ConcurrentHashMap<>();
+
+        void scheduleRefresh(IncomingEnvelope<?> envelope, String queueUrl, Duration visibilityTimeout, Logger logger) {
+            Duration delay = visibilityTimeout.toMinutes() < 2
+                    ? visibilityTimeout.dividedBy(2)
+                    : visibilityTimeout.minusMinutes(1);
+            Future<?> future = REFRESH_SCHEDULER.schedule(() -> refreshMessages(envelope, queueUrl, visibilityTimeout, logger), delay.toMillis(), TimeUnit.MILLISECONDS);
+            futures.put(envelope, future);
+        }
+
+        void cancelRefresh(IncomingEnvelope<?> envelope) {
+            futures.remove(envelope).cancel(true);
+        }
+
+        private void refreshMessages(IncomingEnvelope<?> envelope, String queueUrl, Duration visibilityTimeout, Logger logger) {
+            logger.info("Refreshing SQS message '{}' for '{}' seconds", envelope.getMessageId(), visibilityTimeout.getSeconds());
+            ChangeMessageVisibilityRequest sqsRequest = new ChangeMessageVisibilityRequest()
+                    .withQueueUrl(queueUrl)
+                    .withReceiptHandle(envelope.getReceipt())
+                    .withVisibilityTimeout((int) visibilityTimeout.getSeconds());
+            client.changeMessageVisibility(sqsRequest);
+
+            scheduleRefresh(envelope, queueUrl, visibilityTimeout, logger);
+        }
     }
 }
 

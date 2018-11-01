@@ -18,6 +18,7 @@ package io.axonif.queuebacca.sqs;
 
 import static java.util.Objects.requireNonNull;
 
+import java.time.Duration;
 import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -62,9 +63,9 @@ public final class SqsCourierMessageBinRegistry {
     public static final int DEFAULT_MAXIMUM_MESSAGE_SIZE = 262144;
     public static final int DEFAULT_MESSAGE_RETENTION_PERIOD = 345600;
     public static final int DEFAULT_RECEIVE_MESSAGE_WAIT_TIME_SECONDS = 0;
-    public static final int DEFAULT_VISIBILITY_TIMEOUT = 600;
+    public static final Duration TRASH_QUEUE_VISIBILITY_TIMEOUT = Duration.ofSeconds(30);
 
-    private final Map<String, String> queueUrls = new ConcurrentHashMap<>();
+    private final Map<String, CourierProfile> courierProfiles = new ConcurrentHashMap<>();
     private final AmazonSQS client;
     private final JsonSerializer jsonSerializer;
     private final String queueNameDiscriminator;
@@ -86,9 +87,9 @@ public final class SqsCourierMessageBinRegistry {
         this.jsonSerializer = requireNonNull(jsonSerializer);
         this.queueNameDiscriminator = requireNonNull(queueNameDiscriminator);
         this.allowProvisioning = allowProvisioning;
-        this.trashQueueUrl = registerMessageBin(requireNonNull(trashBin));
+        this.trashQueueUrl = registerMessageBin(requireNonNull(trashBin), TRASH_QUEUE_VISIBILITY_TIMEOUT);
         if (allowProvisioning) {
-            setQueueAttributes(trashQueueUrl, new BaseConfiguration(), "");
+            setQueueAttributes(trashQueueUrl, TRASH_QUEUE_VISIBILITY_TIMEOUT, new BaseConfiguration(), "");
         }
     }
 
@@ -99,7 +100,15 @@ public final class SqsCourierMessageBinRegistry {
      * @return the queue's URL
      */
     public String getQueueUrl(MessageBin messageBin) {
-        return queueUrls.get(requireNonNull(messageBin).getName());
+        requireNonNull(messageBin);
+
+        return courierProfiles.get(messageBin.getName()).queueUrl;
+    }
+
+    public Duration getVisibilityTimeout(MessageBin messageBin) {
+        requireNonNull(messageBin);
+
+        return courierProfiles.get(messageBin.getName()).visibilityTimeout;
     }
 
     /**
@@ -116,19 +125,19 @@ public final class SqsCourierMessageBinRegistry {
         configuration = configuration.subset(SQS_QUEUE_PREFIX).subset(courier.getName());
 
         MessageBin processingBin = courier.getProcessingBin();
-        String processingQueueUrl = registerMessageBin(processingBin);
+        String processingQueueUrl = registerMessageBin(processingBin, courier.getVisibilityTimeout());
 
         MessageBin recyclingBin = courier.getRecyclingBin();
-        String recyclingQueueUrl = registerMessageBin(recyclingBin);
+        String recyclingQueueUrl = registerMessageBin(recyclingBin, courier.getVisibilityTimeout());
 
         if (allowProvisioning) {
             SqsRedrivePolicy processingRedrivePolicy = new SqsRedrivePolicy(configuration.getInt("retries", DEFAULT_RETRIES), getQueueArn(recyclingQueueUrl));
-            setQueueAttributes(processingQueueUrl, configuration.subset(SQS_QUEUE_PROCESSING), jsonSerializer.toJson(processingRedrivePolicy));
             setTags(processingQueueUrl, courier.getTags());
+            setQueueAttributes(processingQueueUrl, courier.getVisibilityTimeout(), configuration.subset(SQS_QUEUE_PROCESSING), jsonSerializer.toJson(processingRedrivePolicy));
 
             SqsRedrivePolicy recyclingRedrivePolicy = new SqsRedrivePolicy(configuration.getInt("retriesRecycling", DEFAULT_RETRIES_RECYCLING), getQueueArn(trashQueueUrl));
-            setQueueAttributes(recyclingQueueUrl,  configuration.subset(SQS_QUEUE_RECYCLING), jsonSerializer.toJson(recyclingRedrivePolicy));
-            if (!courier.getTags().isEmpty()) {
+            setQueueAttributes(recyclingQueueUrl,  courier.getVisibilityTimeout(), configuration.subset(SQS_QUEUE_RECYCLING), jsonSerializer.toJson(recyclingRedrivePolicy));
+                if (!courier.getTags().isEmpty()) {
                 setTags(processingQueueUrl, courier.getTags());
                 setTags(recyclingQueueUrl, courier.getTags());
             }
@@ -137,14 +146,14 @@ public final class SqsCourierMessageBinRegistry {
         return this;
     }
 
-    private String registerMessageBin(MessageBin messageBin) {
+    private String registerMessageBin(MessageBin messageBin, Duration visibilityTimeout) {
         String messageBinLabel = messageBin.getName();
-        if (queueUrls.containsKey(messageBinLabel)) {
+        if (courierProfiles.containsKey(messageBinLabel)) {
             throw new QueuebaccaConfigurationException("Message bin '" + messageBinLabel + "' has already been registered");
         }
 
         String queueUrl = createQueue(messageBinLabel);
-        queueUrls.put(messageBinLabel, queueUrl);
+        courierProfiles.put(messageBinLabel, new CourierProfile(queueUrl, visibilityTimeout));
         return queueUrl;
     }
 
@@ -178,14 +187,14 @@ public final class SqsCourierMessageBinRegistry {
         return client.getQueueAttributes(attributesRequest).getAttributes().get(QueueAttributeName.QueueArn.toString());
     }
 
-    private void setQueueAttributes(String queueUrl, Configuration configuration, String redrivePolicy) {
+    private void setQueueAttributes(String queueUrl, Duration visibilityTimeout, Configuration configuration, String redrivePolicy) {
         SetQueueAttributesRequest attributesRequest = new SetQueueAttributesRequest()
                 .withQueueUrl(queueUrl)
                 .addAttributesEntry(QueueAttributeName.DelaySeconds.toString(), String.valueOf(configuration.getInt("delaySeconds", DEFAULT_DELAY_SECONDS)))
                 .addAttributesEntry(QueueAttributeName.MaximumMessageSize.toString(), String.valueOf(configuration.getInt("maximumMessageSize", DEFAULT_MAXIMUM_MESSAGE_SIZE)))
                 .addAttributesEntry(QueueAttributeName.MessageRetentionPeriod.toString(), String.valueOf(configuration.getInt("messageRetentionPeriod", DEFAULT_MESSAGE_RETENTION_PERIOD)))
                 .addAttributesEntry(QueueAttributeName.ReceiveMessageWaitTimeSeconds.toString(), String.valueOf(configuration.getInt("receiveMessageWaitTimeSeconds", DEFAULT_RECEIVE_MESSAGE_WAIT_TIME_SECONDS)))
-                .addAttributesEntry(QueueAttributeName.VisibilityTimeout.toString(), String.valueOf(configuration.getInt("visibilityTimeout", DEFAULT_VISIBILITY_TIMEOUT)))
+                .addAttributesEntry(QueueAttributeName.VisibilityTimeout.toString(), String.valueOf(configuration.getLong("visibilityTimeout", visibilityTimeout.getSeconds())))
                 .addAttributesEntry(QueueAttributeName.RedrivePolicy.toString(), redrivePolicy);
 
         client.setQueueAttributes(attributesRequest);
@@ -196,5 +205,16 @@ public final class SqsCourierMessageBinRegistry {
         TagQueueRequest tagQueueRequest = new TagQueueRequest(queueUrl, tagMap);
 
         client.tagQueue(tagQueueRequest);
+    }
+
+    private class CourierProfile {
+
+        private final String queueUrl;
+        private final Duration visibilityTimeout;
+
+        private CourierProfile(String queueUrl, Duration visibilityTimeout) {
+            this.queueUrl = requireNonNull(queueUrl);
+            this.visibilityTimeout = requireNonNull(visibilityTimeout);
+        }
     }
 }

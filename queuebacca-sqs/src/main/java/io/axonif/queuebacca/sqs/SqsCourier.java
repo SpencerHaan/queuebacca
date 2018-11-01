@@ -16,6 +16,7 @@
 
 package io.axonif.queuebacca.sqs;
 
+import java.time.Duration;
 import java.util.Collection;
 
 import io.axonif.queuebacca.MessageBin;
@@ -52,4 +53,11 @@ public interface SqsCourier {
      * @return the SQS tags
      */
     Collection<SqsTag> getTags();
+
+    /**
+     * Gets the visibility timeout for both the processing and recycling bins.
+     *
+     * @return the visibility timeout as a {@link Duration}
+     */
+    Duration getVisibilityTimeout();
 }
