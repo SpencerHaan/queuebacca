@@ -17,6 +17,7 @@
 package io.axonif.queuebacca;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -45,7 +46,7 @@ public interface Client {
      * @param <M> the type of the message
      * @return a collection of {@link OutgoingEnvelope OutgoingEnvelopes} containing information of the sent messages
      */
-    <M extends Message> Collection<OutgoingEnvelope<M>> sendMessages(MessageBin messageBin, Collection<M> messages, int delay);
+    <M extends Message> List<OutgoingEnvelope<M>> sendMessages(MessageBin messageBin, List<M> messages, int delay);
 
     /**
      * Retrieves a single {@link Message} from the provided {@link MessageBin}.

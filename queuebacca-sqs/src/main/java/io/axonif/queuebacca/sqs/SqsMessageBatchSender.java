@@ -21,6 +21,7 @@ import static java.util.Objects.requireNonNull;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -91,7 +92,7 @@ final class SqsMessageBatchSender<M extends Message> {
      * @param delay a delay of 0 or greater
      * @return a collection of {@link OutgoingEnvelope OutgoingEnvelopes} containing information of the sent messages
      */
-    Collection<OutgoingEnvelope<M>> send(String queueUrl, int delay) {
+    List<OutgoingEnvelope<M>> send(String queueUrl, int delay) {
         return StreamSupport.stream(partition(batchEntries, MAX_BATCH_ENTRY_COUNT).spliterator(), false)
                 .map(Batch::from)
                 .map(b -> sendBatch(b, queueUrl, delay))
@@ -99,12 +100,12 @@ final class SqsMessageBatchSender<M extends Message> {
                 .collect(Collectors.toList());
     }
 
-    private Collection<OutgoingEnvelope<M>> sendBatch(Batch<M> batch, String queueUrl, int delay) {
+    private List<OutgoingEnvelope<M>> sendBatch(Batch<M> batch, String queueUrl, int delay) {
         SendMessageBatchRequest batchRequest = batch.toBatchRequest(delay)
                 .withQueueUrl(queueUrl);
         SendMessageBatchResult batchResult = client.sendMessageBatch(batchRequest);
 
-        Collection<OutgoingEnvelope<M>> envelopes = batchResult.getSuccessful().stream()
+        List<OutgoingEnvelope<M>> envelopes = batchResult.getSuccessful().stream()
                 .peek(s ->  logger.info("Sent SQS message '{}'", s.getMessageId()))
                 .map(s -> new OutgoingEnvelope<>(s.getMessageId(), batch.getMessage(s.getId())))
                 .collect(Collectors.toList());

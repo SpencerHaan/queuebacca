@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -118,7 +119,7 @@ public final class SqsClient implements Client {
      * @throws QueuebaccaException if a single message exceeds the max size of 25KBs for a batch (256KB total max size)
      */
     @Override
-    public <M extends Message> Collection<OutgoingEnvelope<M>> sendMessages(MessageBin messageBin, Collection<M> messages, int delay) {
+    public <M extends Message> List<OutgoingEnvelope<M>> sendMessages(MessageBin messageBin, List<M> messages, int delay) {
         requireNonNull(messageBin);
         requireNonNull(messages);
 
