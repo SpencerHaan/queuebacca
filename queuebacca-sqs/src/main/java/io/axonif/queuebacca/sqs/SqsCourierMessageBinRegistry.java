@@ -132,12 +132,12 @@ public final class SqsCourierMessageBinRegistry {
 
         if (allowProvisioning) {
             SqsRedrivePolicy processingRedrivePolicy = new SqsRedrivePolicy(configuration.getInt("retries", DEFAULT_RETRIES), getQueueArn(recyclingQueueUrl));
-            setTags(processingQueueUrl, courier.getTags());
             setQueueAttributes(processingQueueUrl, courier.getVisibilityTimeout(), configuration.subset(SQS_QUEUE_PROCESSING), jsonSerializer.toJson(processingRedrivePolicy));
 
             SqsRedrivePolicy recyclingRedrivePolicy = new SqsRedrivePolicy(configuration.getInt("retriesRecycling", DEFAULT_RETRIES_RECYCLING), getQueueArn(trashQueueUrl));
             setQueueAttributes(recyclingQueueUrl,  courier.getVisibilityTimeout(), configuration.subset(SQS_QUEUE_RECYCLING), jsonSerializer.toJson(recyclingRedrivePolicy));
-                if (!courier.getTags().isEmpty()) {
+
+            if (!courier.getTags().isEmpty()) {
                 setTags(processingQueueUrl, courier.getTags());
                 setTags(recyclingQueueUrl, courier.getTags());
             }
