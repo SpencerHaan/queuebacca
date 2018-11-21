@@ -16,14 +16,20 @@
 
 package io.axonif.gcp.pubsub;
 
+import com.google.cloud.pubsub.v1.Subscriber;
+import com.google.cloud.pubsub.v1.stub.GrpcSubscriberStub;
 import com.google.cloud.pubsub.v1.stub.PublisherStub;
+import com.google.cloud.pubsub.v1.stub.SubscriberStub;
+import com.google.cloud.pubsub.v1.stub.SubscriberStubSettings;
 import com.google.pubsub.v1.Topic;
 
 public class GcpManager {
 
     private PublisherStub publisher;
+    private SubscriberStub subscriber;
 
     public void start() {
+        Subscriber.newBuilder()
         Topic topic = Topic.newBuilder()
                 .setName("")
                 .build();
