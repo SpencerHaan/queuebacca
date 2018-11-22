@@ -16,28 +16,52 @@
 
 package io.axonif.gcp.pubsub;
 
-import com.google.cloud.pubsub.v1.Subscriber;
-import com.google.cloud.pubsub.v1.stub.GrpcSubscriberStub;
+import static java.util.Objects.requireNonNull;
+
+import javax.security.auth.login.Configuration;
+
+import com.google.cloud.pubsub.v1.TopicAdminClient;
 import com.google.cloud.pubsub.v1.stub.PublisherStub;
 import com.google.cloud.pubsub.v1.stub.SubscriberStub;
-import com.google.cloud.pubsub.v1.stub.SubscriberStubSettings;
+import com.google.pubsub.v1.ListSubscriptionsRequest;
+import com.google.pubsub.v1.ListTopicsRequest;
+import com.google.pubsub.v1.Subscription;
 import com.google.pubsub.v1.Topic;
+
+import io.axonif.queuebacca.MessageBin;
 
 public class GcpManager {
 
-    private PublisherStub publisher;
-    private SubscriberStub subscriber;
+    private final PublisherStub publisher;
+    private final SubscriberStub subscriber;
+    private final JacksonSerializer serializer;
 
-    public void start() {
-        Subscriber.newBuilder()
+    public GcpManager(PublisherStub publisher, SubscriberStub subscriber, JacksonSerializer serializer) {
+        this.publisher = requireNonNull(publisher);
+        this.subscriber = requireNonNull(subscriber);
+        this.serializer = requireNonNull(serializer);
+    }
+
+    public void registerMessageBin(MessageBin messageBin, Configuration configuration) {
+        ListSubscriptionsRequest listSubscriptionsRequest = ListSubscriptionsRequest.newBuilder()
+                .
+                .build();
         Topic topic = Topic.newBuilder()
                 .setName("")
                 .build();
         publisher.createTopicCallable()
                 .call(topic);
+
+        Subscription subscription = Subscription.newBuilder()
+                .setName("")
+                .set
+                .build();
+        subscriber.createSubscriptionCallable()
+                .call(subscription);
+
     }
 
     public GcpClient newClient() {
-
+        return new GcpClient(publisher, subscriber, serializer);
     }
 }
