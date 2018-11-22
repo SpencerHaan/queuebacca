@@ -26,6 +26,7 @@
   <modules>
     <module>queuebacca-core</module>
     <module>queuebacca-sqs</module>
+    <module>queuebacca-activemq</module>
   </modules>
 
   <name>queuebacca</name>
