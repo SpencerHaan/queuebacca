@@ -27,11 +27,13 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import org.slf4j.MDC;
+
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
+
 import io.axonif.queuebacca.events.TimingEventListener;
 import io.axonif.queuebacca.events.TimingEventSupport;
 import io.axonif.queuebacca.util.MessageSerializer;
-
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
 
 /**
  * Subscribes to {@link MessageBin MessageBins} for the purposes of consuming {@link Message ViaMessages}. Maintains
@@ -194,6 +196,8 @@ public final class Subscriber {
 		private ThreadPoolWorkExecutor.WorkOrder newWorkOrder(IncomingEnvelope<M> envelope) {
 			return () -> {
 				Context context = new Context(envelope.getMessageId(), envelope.getReadCount(), envelope.getFirstReceived());
+				MDC.put("queuebaccaMessageId", context.getMessageId());
+				MDC.put("queuebaccaMessageReadCount", String.valueOf(context.getReadCount()));
 				try {
 					long start = System.currentTimeMillis();
 					try {
@@ -224,6 +228,8 @@ public final class Subscriber {
 				} catch (Error e) {
 					logger.error("Error occurred while processing message: '{}' with body '{}'", envelope.getMessageId(), Logger.markMessage(envelope.getMessage()), e);
 					throw e;
+				} finally {
+					MDC.clear();
 				}
 			};
 		}

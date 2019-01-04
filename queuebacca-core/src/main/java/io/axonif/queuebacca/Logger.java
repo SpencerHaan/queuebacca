@@ -16,13 +16,14 @@
 
 package io.axonif.queuebacca;
 
-import io.axonif.queuebacca.util.MessageSerializer;
-import org.slf4j.LoggerFactory;
+import static java.util.Objects.requireNonNull;
 
 import java.util.function.BiConsumer;
 import java.util.stream.Stream;
 
-import static java.util.Objects.requireNonNull;
+import org.slf4j.LoggerFactory;
+
+import io.axonif.queuebacca.util.MessageSerializer;
 
 public class Logger {
 
@@ -44,7 +45,7 @@ public class Logger {
 	}
 
 	public void info(String format, Object... arguments) {
-		log(format, arguments, logger::warn);
+		log(format, arguments, logger::info);
 	}
 
 	public void warn(String format, Object... arguments) {
