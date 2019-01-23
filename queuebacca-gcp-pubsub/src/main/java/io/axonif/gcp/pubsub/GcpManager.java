@@ -54,7 +54,6 @@ public class GcpManager {
 
         Subscription subscription = Subscription.newBuilder()
                 .setName("")
-                .set
                 .build();
         subscriber.createSubscriptionCallable()
                 .call(subscription);
