@@ -20,23 +20,21 @@ import static java.util.Objects.requireNonNull;
 
 import javax.security.auth.login.Configuration;
 
-import com.google.cloud.pubsub.v1.TopicAdminClient;
 import com.google.cloud.pubsub.v1.stub.PublisherStub;
 import com.google.cloud.pubsub.v1.stub.SubscriberStub;
 import com.google.pubsub.v1.ListSubscriptionsRequest;
-import com.google.pubsub.v1.ListTopicsRequest;
 import com.google.pubsub.v1.Subscription;
 import com.google.pubsub.v1.Topic;
 
 import io.axonif.queuebacca.MessageBin;
 
-public class GcpManager {
+public class PubSubManager {
 
     private final PublisherStub publisher;
     private final SubscriberStub subscriber;
     private final JacksonSerializer serializer;
 
-    public GcpManager(PublisherStub publisher, SubscriberStub subscriber, JacksonSerializer serializer) {
+    public PubSubManager(PublisherStub publisher, SubscriberStub subscriber, JacksonSerializer serializer) {
         this.publisher = requireNonNull(publisher);
         this.subscriber = requireNonNull(subscriber);
         this.serializer = requireNonNull(serializer);
@@ -47,20 +45,20 @@ public class GcpManager {
                 .
                 .build();
         Topic topic = Topic.newBuilder()
-                .setName("")
+                .setName(messageBin.getName())
                 .build();
         publisher.createTopicCallable()
                 .call(topic);
 
         Subscription subscription = Subscription.newBuilder()
-                .setName("")
+                .setName(messageBin.getName())
+                .setTopic(messageBin.getName())
                 .build();
         subscriber.createSubscriptionCallable()
                 .call(subscription);
-
     }
 
-    public GcpClient newClient() {
-        return new GcpClient(publisher, subscriber, serializer);
+    public PubSubClient newClient() {
+        return new PubSubClient(publisher, subscriber, serializer);
     }
 }

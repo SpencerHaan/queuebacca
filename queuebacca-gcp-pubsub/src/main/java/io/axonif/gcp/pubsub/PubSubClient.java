@@ -40,13 +40,13 @@ import io.axonif.queuebacca.Message;
 import io.axonif.queuebacca.MessageBin;
 import io.axonif.queuebacca.OutgoingEnvelope;
 
-public class GcpClient implements Client {
+public class PubSubClient implements Client {
 
     private final PublisherStub publisher;
     private final SubscriberStub subscriber;
     private final JacksonSerializer jacksonSerializer;
 
-    public GcpClient(PublisherStub publisher, SubscriberStub subscriber, JacksonSerializer jacksonSerializer) {
+    public PubSubClient(PublisherStub publisher, SubscriberStub subscriber, JacksonSerializer jacksonSerializer) {
         this.publisher = publisher;
         this.subscriber = subscriber;
         this.jacksonSerializer = jacksonSerializer;
