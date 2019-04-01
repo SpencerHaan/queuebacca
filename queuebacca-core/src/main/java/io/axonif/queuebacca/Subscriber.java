@@ -196,8 +196,7 @@ public final class Subscriber {
 		private ThreadPoolWorkExecutor.WorkOrder newWorkOrder(IncomingEnvelope<M> envelope) {
 			return () -> {
 				Context context = new Context(envelope.getMessageId(), envelope.getReadCount(), envelope.getFirstReceived());
-				MDC.put("queuebaccaMessageId", context.getMessageId());
-				MDC.put("queuebaccaMessageReadCount", String.valueOf(context.getReadCount()));
+				logger.initalizeContext(context);
 				try {
 					long start = System.currentTimeMillis();
 					try {
@@ -229,7 +228,7 @@ public final class Subscriber {
 					logger.error("Error occurred while processing message: '{}' with body '{}'", envelope.getMessageId(), Logger.markMessage(envelope.getMessage()), e);
 					throw e;
 				} finally {
-					MDC.clear();
+					logger.clearContext();
 				}
 			};
 		}
