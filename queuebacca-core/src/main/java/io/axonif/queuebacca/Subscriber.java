@@ -27,8 +27,6 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-import org.slf4j.MDC;
-
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 
 import io.axonif.queuebacca.events.TimingEventListener;
@@ -196,7 +194,7 @@ public final class Subscriber {
 		private ThreadPoolWorkExecutor.WorkOrder newWorkOrder(IncomingEnvelope<M> envelope) {
 			return () -> {
 				Context context = new Context(envelope.getMessageId(), envelope.getReadCount(), envelope.getFirstReceived());
-				logger.initalizeContext(context);
+				logger.setContext(context);
 				try {
 					long start = System.currentTimeMillis();
 					try {

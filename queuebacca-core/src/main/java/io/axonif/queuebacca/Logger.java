@@ -57,7 +57,7 @@ public class Logger {
 		log(format, arguments, logger::error);
 	}
 
-	public void initalizeContext(Context context) {
+	public void setContext(Context context) {
 		MDC.put("queuebaccaMessageId", context.getMessageId());
 		MDC.put("queuebaccaMessageReadCount", String.valueOf(context.getReadCount()));
 	}
