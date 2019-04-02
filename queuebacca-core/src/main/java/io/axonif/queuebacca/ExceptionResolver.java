@@ -25,6 +25,8 @@ import org.slf4j.LoggerFactory;
 
 public final class ExceptionResolver {
 
+	private static final Logger LOGGER = LoggerFactory.getLogger(ExceptionResolver.class);
+
 	public enum Resolution {
 		TERMINATE,
 		RETRY
@@ -45,8 +47,7 @@ public final class ExceptionResolver {
 		if (handler.isPresent()) {
 			return handler.get().handle(exception, context);
 		} else {
-			Logger logger = LoggerFactory.getLogger(ExceptionResolver.class.getName() + ":" + exception.getClass().getName());
-			logger.error("Error occurred '{}'", context.getMessageId(), exception);
+			LOGGER.warn("Error occurred '{}'", context.getMessageId(), exception);
 			return Resolution.RETRY;
 		}
 	}
