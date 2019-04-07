@@ -47,7 +47,7 @@ public final class ExceptionResolver {
 		if (handler.isPresent()) {
 			return handler.get().handle(exception, context);
 		} else {
-			LOGGER.warn("Error occurred '{}'", context.getMessageId(), exception);
+			LOGGER.error("Error occurred '{}'", context.getMessageId(), exception);
 			return Resolution.RETRY;
 		}
 	}
