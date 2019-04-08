@@ -16,13 +16,15 @@
 
 package io.axonif.queuebacca;
 
-import io.axonif.queuebacca.util.MessageSerializer;
-import org.slf4j.LoggerFactory;
+import static java.util.Objects.requireNonNull;
 
 import java.util.function.BiConsumer;
 import java.util.stream.Stream;
 
-import static java.util.Objects.requireNonNull;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
+
+import io.axonif.queuebacca.util.MessageSerializer;
 
 public class Logger {
 
@@ -44,7 +46,7 @@ public class Logger {
 	}
 
 	public void info(String format, Object... arguments) {
-		log(format, arguments, logger::warn);
+		log(format, arguments, logger::info);
 	}
 
 	public void warn(String format, Object... arguments) {
@@ -53,6 +55,15 @@ public class Logger {
 
 	public void error(String format, Object... arguments) {
 		log(format, arguments, logger::error);
+	}
+
+	public void setContext(Context context) {
+		MDC.put("queuebaccaMessageId", context.getMessageId());
+		MDC.put("queuebaccaMessageReadCount", String.valueOf(context.getReadCount()));
+	}
+
+	public void clearContext() {
+		MDC.clear();
 	}
 
 	private void log(String format, Object[] arguments, BiConsumer<String, Object[]> method) {
