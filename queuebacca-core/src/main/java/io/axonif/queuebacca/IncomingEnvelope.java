@@ -32,22 +32,25 @@ public final class IncomingEnvelope<M extends Message> {
     private final int readCount;
     private final Instant firstReceived;
     private final M message;
+    private final String rawMessage;
 
     /**
      * Creates a new instance of a {@link IncomingEnvelope} with a {@link M message}, it's unique id, a receipt for
      * it's retrieval, and it's current read count.
-     *  @param messageId the message id
+     * @param messageId the message id
      * @param receipt a receipt unique to this envelope
      * @param readCount the number of times the message has been read
      * @param firstReceived the first time the message was received as an {@link Instant}
      * @param message the message
+     * @param rawMessage the message before being de-serialized
      */
-    public IncomingEnvelope(String messageId, String receipt, int readCount, Instant firstReceived, M message) {
+    public IncomingEnvelope(String messageId, String receipt, int readCount, Instant firstReceived, M message, String rawMessage) {
         this.messageId = requireNonNull(messageId);
         this.receipt = requireNonNull(receipt);
         this.readCount = readCount; // SPENCER protect against negatives
         this.firstReceived = requireNonNull(firstReceived);
         this.message = requireNonNull(message);
+        this.rawMessage = requireNonNull(rawMessage);
     }
 
     /**
@@ -90,4 +93,7 @@ public final class IncomingEnvelope<M extends Message> {
         return message;
     }
 
+    public String getRawMessage() {
+        return rawMessage;
+    }
 }

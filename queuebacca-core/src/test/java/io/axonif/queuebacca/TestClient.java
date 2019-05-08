@@ -64,7 +64,7 @@ public class TestClient implements Client {
 		try {
 			MessageWrapper<M> messageWrapper = (MessageWrapper<M>) getQueue(messageBin).poll(1, TimeUnit.SECONDS);
 			return Optional.ofNullable(messageWrapper)
-					.map(w -> new IncomingEnvelope<>(w.getId(), "receipt", w.incrementCount(), Instant.now(), w.getMessage()));
+					.map(w -> new IncomingEnvelope<>(w.getId(), "receipt", w.incrementCount(), Instant.now(), w.getMessage(), "not serialized"));
 		} catch (InterruptedException e) {
 			return Optional.empty();
 		}

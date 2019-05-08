@@ -16,9 +16,7 @@
 
 package io.axonif.queuebacca;
 
-import io.axonif.queuebacca.retries.ConstantRetryDelay;
-import io.axonif.queuebacca.util.MessageSerializer;
-import org.junit.Test;
+import static org.junit.Assert.assertEquals;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -28,18 +26,19 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.Assert.assertEquals;
+import org.junit.Test;
+
+import io.axonif.queuebacca.retries.ConstantRetryDelay;
 
 public class IntegrationTest {
 
 	private ExceptionResolver exceptionResolver = ExceptionResolver.builder().build();
-	private MessageSerializer serializer = new TestMessageSerializer();
 
 	@Test
 	public void subscribe() throws InterruptedException {
 		MessageBin messageBin = new MessageBin("test");
 		TestClient Client = new TestClient();
-		Subscriber subscriber = new Subscriber(Client, ThreadPoolWorkExecutor::newPooledWorkExecutor, exceptionResolver, serializer);
+		Subscriber subscriber = new Subscriber(Client, ThreadPoolWorkExecutor::newPooledWorkExecutor, exceptionResolver);
 
 		MessageConsumer<TestMessage> consumer = (message, context) -> message.markComplete();
 		SubscriptionConfiguration<TestMessage> configuration = SubscriptionConfiguration.builder(messageBin, consumer)
@@ -71,7 +70,7 @@ public class IntegrationTest {
 	public void subscribe_FailedMessage() throws InterruptedException {
 		MessageBin messageBin = new MessageBin("test");
 		TestClient Client = new TestClient();
-		Subscriber subscriber = new Subscriber(Client, ThreadPoolWorkExecutor::newPooledWorkExecutor, exceptionResolver, serializer);
+		Subscriber subscriber = new Subscriber(Client, ThreadPoolWorkExecutor::newPooledWorkExecutor, exceptionResolver);
 
 		MessageConsumer<TestMessage> consumer = (message, context) -> message.markComplete();
 		SubscriptionConfiguration<TestMessage> configuration = SubscriptionConfiguration.builder(messageBin, consumer)
@@ -123,20 +122,4 @@ public class IntegrationTest {
 			onComplete.run();
 		}
 	}
-
-	private class TestMessageSerializer implements MessageSerializer {
-
-        @Override
-        public <M> String toString(M message) {
-        	// Does nothing for this test
-            return null;
-        }
-
-        @SuppressWarnings("unchecked")
-        @Override
-        public <M> M fromString(String body, Class<M> messageClass) {
-			// Does nothing for this test
-            return null;
-        }
-    }
 }

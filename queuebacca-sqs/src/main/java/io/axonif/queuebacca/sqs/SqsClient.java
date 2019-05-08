@@ -201,7 +201,8 @@ public final class SqsClient implements Client {
                 sqsMessage.getReceiptHandle(),
                 Integer.valueOf(sqsMessage.getAttributes().get(APPROXIMATE_RECEIVE_COUNT_ATTRIBUTE)),
                 Instant.ofEpochMilli(Long.valueOf(sqsMessage.getAttributes().get(APPROXIMATE_FIRST_RECEIVE_TIMESTAMP_ATTRIBUTE))),
-                serializer.fromString(sqsMessage.getBody(), Message.class)
+                serializer.fromString(sqsMessage.getBody(), Message.class),
+                sqsMessage.getBody()
         );
     }
 

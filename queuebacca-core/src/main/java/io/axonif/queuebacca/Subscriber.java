@@ -27,11 +27,14 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
+
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 
 import io.axonif.queuebacca.events.TimingEventListener;
 import io.axonif.queuebacca.events.TimingEventSupport;
-import io.axonif.queuebacca.util.MessageSerializer;
 
 /**
  * Subscribes to {@link MessageBin MessageBins} for the purposes of consuming {@link Message ViaMessages}. Maintains
@@ -48,7 +51,6 @@ public final class Subscriber {
     private final Client client;
     private final WorkExecutorFactory workExecutorFactory;
     private final ExceptionResolver exceptionResolver;
-    private final MessageSerializer messageSerializer;
 
 	/**
 	 * Creates a new instance of a {@link Subscriber} for a specific {@link Client}.
@@ -57,11 +59,10 @@ public final class Subscriber {
 	 * @param workExecutorFactory factory for creating {@link WorkExecutor WorkExecutors}
 	 * @param exceptionResolver determines resolution for exceptions thrown by messages
 	 */
-	public Subscriber(Client client, WorkExecutorFactory workExecutorFactory, ExceptionResolver exceptionResolver, MessageSerializer messageSerializer) {
+	public Subscriber(Client client, WorkExecutorFactory workExecutorFactory, ExceptionResolver exceptionResolver) {
         this.client = requireNonNull(client);
 		this.workExecutorFactory = requireNonNull(workExecutorFactory);
 		this.exceptionResolver = requireNonNull(exceptionResolver);
-		this.messageSerializer = requireNonNull(messageSerializer);
 	}
 
 	/**
@@ -78,7 +79,7 @@ public final class Subscriber {
                 .build();
         WorkExecutor workExecutor = workExecutorFactory.newWorkExecutor(configuration.getMessageCapacity(), threadFactory);
 
-        ActiveSubscription<?> subscription = ActiveSubscription.start(configuration, client, workExecutor, exceptionResolver, messageSerializer, timingEventSupport);
+        ActiveSubscription<?> subscription = ActiveSubscription.start(configuration, client, workExecutor, exceptionResolver, timingEventSupport);
         activeSubscriptions.add(subscription);
     }
 
@@ -141,14 +142,13 @@ public final class Subscriber {
 				Client client,
 				WorkExecutor processingPool,
 				ExceptionResolver exceptionResolver,
-				MessageSerializer messageSerializer,
 				TimingEventSupport timingEventSupport
 		) {
 			ScheduledExecutorService subscriptionScheduler = Executors.newScheduledThreadPool(1, new ThreadFactoryBuilder()
 					.setNameFormat(configuration.getMessageBin().getName() + "-subscription-%d")
 					.build());
 
-			Logger logger = new Logger(configuration.getMessageBin().getName(), messageSerializer);
+			Logger logger = LoggerFactory.getLogger(configuration.getMessageBin().getName());
 			ActiveSubscription<M> subscription = new ActiveSubscription<>(
 					subscriptionScheduler,
 					client,
@@ -194,7 +194,8 @@ public final class Subscriber {
 		private ThreadPoolWorkExecutor.WorkOrder newWorkOrder(IncomingEnvelope<M> envelope) {
 			return () -> {
 				Context context = new Context(envelope.getMessageId(), envelope.getReadCount(), envelope.getFirstReceived());
-				logger.setContext(context);
+				MDC.put("queuebaccaMessageId", context.getMessageId());
+				MDC.put("queuebaccaMessageReadCount", String.valueOf(context.getReadCount()));
 				try {
 					long start = System.currentTimeMillis();
 					try {
@@ -209,24 +210,24 @@ public final class Subscriber {
 					ExceptionResolver.Resolution resolution = exceptionResolver.resolve(e, context);
 					switch (resolution) {
 						case TERMINATE:
-							logger.warn("Terminated '{}' with body {}; disposing", envelope.getMessageId(), Logger.markMessage(envelope.getMessage()));
+							logger.warn("Terminated '{}' with body {}; disposing", envelope.getMessageId(), envelope.getRawMessage());
 							client.disposeMessage(messageBin, envelope);
 							break;
 						case RETRY:
 							int retryDelay = retryDelayGenerator.nextRetryDelay(envelope.getReadCount());
-							logger.warn("Retrying Message '{}' with body {} after {} seconds", envelope.getMessageId(), Logger.markMessage(envelope.getMessage()), retryDelay);
+							logger.warn("Retrying Message '{}' with body {} after {} seconds", new Object[]{ envelope.getMessageId(), envelope.getRawMessage(), retryDelay });
 							client.returnMessage(messageBin, envelope, retryDelay);
 							break;
 						default:
-							logger.error("Unknown exception resolution, {}, for '{}'  with body {}; disposing", resolution, envelope.getMessageId(), Logger.markMessage(envelope.getMessage()));
+							logger.error("Unknown exception resolution, {}, for '{}'  with body {}; disposing", new Object[]{ resolution, envelope.getMessageId(), envelope.getRawMessage() });
 							client.disposeMessage(messageBin, envelope);
 							break;
 					}
 				} catch (Error e) {
-					logger.error("Error occurred while processing message: '{}' with body '{}'", envelope.getMessageId(), Logger.markMessage(envelope.getMessage()), e);
+					logger.error("Error occurred while processing message: '{}' with body '{}'", new Object[]{ envelope.getMessageId(), envelope.getRawMessage(), e });
 					throw e;
 				} finally {
-					logger.clearContext();
+					MDC.clear();
 				}
 			};
 		}
