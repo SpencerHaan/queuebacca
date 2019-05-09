@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package io.axonif.queuebacca;
+package io.axonif.queuebacca.consumers;
 
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Stream.concat;
@@ -24,6 +24,11 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
 import java.util.stream.Collectors;
+
+import io.axonif.queuebacca.Message;
+import io.axonif.queuebacca.MessageConsumer;
+import io.axonif.queuebacca.MessageContext;
+import io.axonif.queuebacca.MessageResponse;
 
 /**
  * A {@link MessageConsumer} that allows for additional, processing of {@link Message Messages} using a chain
@@ -43,12 +48,13 @@ public final class 	ScopedMessageConsumer<M extends Message> implements MessageC
 		 * a call to {@link MessageScopeChain#next()} is required. Failing to do so will result in
 		 * the message being disposed of and considered successfully consumed, which may be the desired result.
 		 *
+		 * @param <M> the message type
 		 * @param message the message being consumed
 		 * @param messageContext the context of the message
 		 * @param messageScopeChain the chain to continue processing to consumption
-		 * @param <M> the message type
+		 * @return a {@link MessageResponse} indicating how to handle the {@link Message} after it's been consumed
 		 */
-		<M> void wrap(M message, MessageContext messageContext, MessageScopeChain messageScopeChain);
+		<M> MessageResponse wrap(M message, MessageContext messageContext, MessageScopeChain messageScopeChain);
 	}
 
 	/**
@@ -59,7 +65,7 @@ public final class 	ScopedMessageConsumer<M extends Message> implements MessageC
 		/**
 		 * Calls the next {@link MessageScope}, or if there are none left, the {@link MessageConsumer}.
 		 */
-		void next();
+		MessageResponse next();
 	}
 
 	private final MessageConsumer<M> consumer;
@@ -87,14 +93,16 @@ public final class 	ScopedMessageConsumer<M extends Message> implements MessageC
 	 *     This consumer will run the {@link Message} through a chain of {@link MessageScope MessageScopes} before
 	 *     invoking it's {@link MessageConsumer}.
 	 * </p>
+	 * @return
 	 */
 	@Override
-	public void consume(M message, MessageContext messageContext) {
+	public MessageResponse consume(M message, MessageContext messageContext) {
 		requireNonNull(message);
 		requireNonNull(messageContext);
 
 		ConcreteMessageScopeChain messageScopeChain = new ConcreteMessageScopeChain(new LinkedList<>(messageScopes), message, messageContext);
 		messageScopeChain.next();
+		return null;
 	}
 
 	/**
@@ -113,15 +121,15 @@ public final class 	ScopedMessageConsumer<M extends Message> implements MessageC
 		}
 
 		@Override
-		public void next() {
+		public MessageResponse next() {
 			requireNonNull(message);
 			requireNonNull(messageContext);
 
 			if (!messageScopes.isEmpty()) {
 				MessageScope messageScope = messageScopes.poll();
-				messageScope.wrap(message, messageContext, this);
+				return messageScope.wrap(message, messageContext, this);
 			} else {
-				consumer.consume(message, messageContext);
+				return consumer.consume(message, messageContext);
 			}
 		}
 	}

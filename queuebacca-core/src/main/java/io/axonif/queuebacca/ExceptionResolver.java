@@ -27,11 +27,6 @@ public final class ExceptionResolver {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(ExceptionResolver.class);
 
-	public enum Resolution {
-		TERMINATE,
-		RETRY
-	}
-
 	private final Map<Class<?>, ExceptionHandler<?>> exceptionHandlers;
 
 	private ExceptionResolver(Map<Class<?>, ExceptionHandler<?>> exceptionHandlers) {
@@ -42,13 +37,13 @@ public final class ExceptionResolver {
 		return new Builder();
 	}
 
-	public Resolution resolve(Exception exception, MessageContext messageContext) {
+	public MessageResponse resolve(Exception exception, MessageContext messageContext) {
 		Optional<ExceptionHandler<Exception>> handler = findExceptionHandler(exception.getClass());
 		if (handler.isPresent()) {
 			return handler.get().handle(exception, messageContext);
 		} else {
 			LOGGER.error("Error occurred '{}'", messageContext.getMessageId(), exception);
-			return Resolution.RETRY;
+			return MessageResponse.RETRY;
 		}
 	}
 
@@ -70,7 +65,7 @@ public final class ExceptionResolver {
 
 	public interface ExceptionHandler<E extends Exception> {
 
-		Resolution handle(E exception, MessageContext messageContext);
+		MessageResponse handle(E exception, MessageContext messageContext);
 	}
 
 	public static class Builder {

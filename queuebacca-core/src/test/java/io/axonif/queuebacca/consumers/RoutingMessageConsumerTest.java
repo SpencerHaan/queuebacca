@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package io.axonif.queuebacca;
+package io.axonif.queuebacca.consumers;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -25,6 +25,9 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.Test;
 
+import io.axonif.queuebacca.Context;
+import io.axonif.queuebacca.Message;
+import io.axonif.queuebacca.MessageConsumer;
 import io.axonif.queuebacca.exceptions.QueuebaccaConfigurationException;
 
 public class RoutingMessageConsumerTest {
@@ -32,8 +35,8 @@ public class RoutingMessageConsumerTest {
 	@Test(expected = QueuebaccaConfigurationException.class)
 	public void consume_duplicateRoute() {
 		RoutingMessageConsumer.builder()
-				.registerMessageRoute(MessageType1.class, (message, context) -> {})
-				.registerMessageRoute(MessageType1.class, (message, context) -> {});
+				.registerMessageRoute(MessageType1.class, MessageConsumer.basic(message -> {}))
+				.registerMessageRoute(MessageType1.class, MessageConsumer.basic(message -> {}));
 	}
 
 	@Test(expected = NullPointerException.class)
@@ -54,7 +57,7 @@ public class RoutingMessageConsumerTest {
 	public void consume_inheritanceFallbackRoute() {
 		AtomicBoolean called = new AtomicBoolean(false);
 		RoutingMessageConsumer<Message> messageConsumer = RoutingMessageConsumer.builder()
-				.registerMessageRoute(Message.class, (message, context) -> called.set(true))
+				.registerMessageRoute(Message.class, MessageConsumer.basic(message -> called.set(true)))
 				.build();
 		messageConsumer.consume(new MessageType1(), new MessageContext("", 0, Instant.now(), "rawMessage"));
 
@@ -65,7 +68,7 @@ public class RoutingMessageConsumerTest {
 	public void consume_singleRoute() {
 		AtomicBoolean called1 = new AtomicBoolean(false);
 		RoutingMessageConsumer<MessageType1> messageConsumer = RoutingMessageConsumer.<MessageType1>builder()
-				.registerMessageRoute(MessageType1.class, (message, context) -> called1.set(true))
+				.registerMessageRoute(MessageType1.class, MessageConsumer.basic(message -> called1.set(true)))
 				.build();
 		messageConsumer.consume(new MessageType1(), new MessageContext("", 0, Instant.now(), "rawMessage"));
 
@@ -81,8 +84,8 @@ public class RoutingMessageConsumerTest {
 		AtomicReference<String> actualMessage2Id = new AtomicReference<>();
 
 		RoutingMessageConsumer<Message> messageConsumer = RoutingMessageConsumer.builder()
-				.registerMessageRoute(MessageType1.class, (message, context) -> actualMessage1Id.set(context.getMessageId()))
-				.registerMessageRoute(MessageType2.class, (message, context) -> actualMessage2Id.set(context.getMessageId()))
+				.registerMessageRoute(MessageType1.class, MessageConsumer.responseless((message, context) -> actualMessage1Id.set(context.getMessageId())))
+				.registerMessageRoute(MessageType2.class, MessageConsumer.responseless((message, context) -> actualMessage2Id.set(context.getMessageId())))
 				.build();
 		messageConsumer.consume(new MessageType1(), new MessageContext(expectedMessage1Id, 0, Instant.now(), "rawMessage"));
 		messageConsumer.consume(new MessageType2(), new MessageContext(expectedMessage2Id, 0, Instant.now(), "rawMessage"));

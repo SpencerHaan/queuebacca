@@ -16,22 +16,22 @@
 
 package io.axonif.queuebacca.sqs;
 
-import static io.axonif.queuebacca.ExceptionResolver.Resolution;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.amazonaws.services.sqs.model.AmazonSQSException;
+
 import io.axonif.queuebacca.MessageContext;
 import io.axonif.queuebacca.ExceptionResolver;
+import io.axonif.queuebacca.MessageResponse;
 
 public class AmazonSqsExceptionHandler implements ExceptionResolver.ExceptionHandler<AmazonSQSException> {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(AmazonSqsExceptionHandler.class);
 
 	@Override
-	public Resolution handle(AmazonSQSException exception, MessageContext messageContext) {
+	public MessageResponse handle(AmazonSQSException exception, MessageContext messageContext) {
 		LOGGER.error("SQS error occurred", exception);
-		return Resolution.RETRY;
+		return MessageResponse.RETRY;
 	}
 }

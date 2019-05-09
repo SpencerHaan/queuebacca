@@ -197,39 +197,48 @@ public final class Subscriber {
 				MDC.put("queuebaccaMessageId", messageContext.getMessageId());
 				MDC.put("queuebaccaMessageReadCount", String.valueOf(messageContext.getReadCount()));
 				try {
-					long start = System.currentTimeMillis();
+					MessageResponse messageResponse;
 					try {
-						consumer.consume(envelope.getMessage(), messageContext);
-					} finally {
-						long duration = System.currentTimeMillis() - start;
-						timingEventSupport.fireEvent(messageBin, envelope.getMessage().getClass(), envelope.getMessageId(), duration);
+						long start = System.currentTimeMillis();
+						try {
+							messageResponse = consumer.consume(envelope.getMessage(), messageContext);
+						} finally {
+							long duration = System.currentTimeMillis() - start;
+							timingEventSupport.fireEvent(messageBin, envelope.getMessage().getClass(), envelope.getMessageId(), duration);
+						}
+					} catch (Exception e) {
+						messageResponse = exceptionResolver.resolve(e, messageContext);
 					}
-					logger.info("Consumed '{}'; disposing", envelope.getMessageId());
-					client.disposeMessage(messageBin, envelope);
-				} catch (Exception e) {
-					ExceptionResolver.Resolution resolution = exceptionResolver.resolve(e, messageContext);
-					switch (resolution) {
-						case TERMINATE:
-							logger.warn("Terminated '{}' with body {}; disposing", envelope.getMessageId(), envelope.getRawMessage());
-							client.disposeMessage(messageBin, envelope);
-							break;
-						case RETRY:
-							int retryDelay = retryDelayGenerator.nextRetryDelay(envelope.getReadCount());
-							logger.warn("Retrying Message '{}' with body {} after {} seconds", new Object[]{ envelope.getMessageId(), envelope.getRawMessage(), retryDelay });
-							client.returnMessage(messageBin, envelope, retryDelay);
-							break;
-						default:
-							logger.error("Unknown exception resolution, {}, for '{}'  with body {}; disposing", new Object[]{ resolution, envelope.getMessageId(), envelope.getRawMessage() });
-							client.disposeMessage(messageBin, envelope);
-							break;
-					}
+					handleResponse(messageResponse, envelope);
 				} catch (Error e) {
 					logger.error("Error occurred while processing message: '{}' with body '{}'", new Object[]{ envelope.getMessageId(), envelope.getRawMessage(), e });
 					throw e;
 				} finally {
-					MDC.clear();
+                    MDC.clear();
 				}
 			};
+		}
+
+		private void handleResponse(MessageResponse messageResponse, IncomingEnvelope<M> envelope) {
+			switch (messageResponse) {
+				case CONSUMED:
+					logger.info("Consumed '{}'; disposing", envelope.getMessageId());
+					client.disposeMessage(messageBin, envelope);
+					break;
+				case RETRY:
+					int retryDelay = retryDelayGenerator.nextRetryDelay(envelope.getReadCount());
+					logger.warn("Retrying Message '{}' with body {} after {} seconds", new Object[]{ envelope.getMessageId(), envelope.getRawMessage(), retryDelay });
+					client.returnMessage(messageBin, envelope, retryDelay);
+					break;
+				case TERMINATE:
+					logger.warn("Terminated '{}' with body {}; disposing", envelope.getMessageId(), envelope.getRawMessage());
+					client.disposeMessage(messageBin, envelope);
+					break;
+				default:
+					logger.error("Unknown exception resolution, {}, for '{}'  with body {}; disposing", new Object[]{messageResponse, envelope.getMessageId(), envelope.getRawMessage() });
+					client.disposeMessage(messageBin, envelope);
+					break;
+			}
 		}
 	}
 }

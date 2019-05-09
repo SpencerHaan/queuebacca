@@ -40,7 +40,7 @@ public class IntegrationTest {
 		TestClient Client = new TestClient();
 		Subscriber subscriber = new Subscriber(Client, ThreadPoolWorkExecutor::newPooledWorkExecutor, exceptionResolver);
 
-		MessageConsumer<TestMessage> consumer = (message, context) -> message.markComplete();
+		MessageConsumer<TestMessage> consumer = MessageConsumer.basic(TestMessage::markComplete);
 		SubscriptionConfiguration<TestMessage> configuration = SubscriptionConfiguration.builder(messageBin, consumer)
 				// Note: This test runs very fast and can cause ThreadPoolExecutor to hit a race condition and throw
 				// RejectedExecutionException if the threadpool size is too small. This has not been an issue in prod
@@ -72,7 +72,7 @@ public class IntegrationTest {
 		TestClient Client = new TestClient();
 		Subscriber subscriber = new Subscriber(Client, ThreadPoolWorkExecutor::newPooledWorkExecutor, exceptionResolver);
 
-		MessageConsumer<TestMessage> consumer = (message, context) -> message.markComplete();
+		MessageConsumer<TestMessage> consumer = MessageConsumer.basic(TestMessage::markComplete);
 		SubscriptionConfiguration<TestMessage> configuration = SubscriptionConfiguration.builder(messageBin, consumer)
 				// Note: This test runs very fast and can cause ThreadPoolExecutor to hit a race condition and throw
 				// RejectedExecutionException if the threadpool size is too small. This has not been an issue in prod

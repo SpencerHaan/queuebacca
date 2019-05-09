@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package io.axonif.queuebacca;
+package io.axonif.queuebacca.consumers;
 
 import static java.util.Objects.requireNonNull;
 
@@ -24,6 +24,11 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
+import io.axonif.queuebacca.Message;
+import io.axonif.queuebacca.MessageBin;
+import io.axonif.queuebacca.MessageConsumer;
+import io.axonif.queuebacca.MessageContext;
+import io.axonif.queuebacca.MessageResponse;
 import io.axonif.queuebacca.exceptions.QueuebaccaConfigurationException;
 
 /**
@@ -54,15 +59,16 @@ public final class RoutingMessageConsumer<M extends Message> implements MessageC
      *    This consumer will route the {@link Message} to the appropriately registered {@link MessageConsumer}.
      * </p>
      * @throws QueuebaccaConfigurationException if no consumer is available for the provided message type
+     * @return a {@link MessageResponse} indicating how to handle the {@link Message} after it's been consumed
      */
     @Override
-    public void consume(M message, MessageContext messageContext) {
+    public MessageResponse consume(M message, MessageContext messageContext) {
         requireNonNull(message);
         requireNonNull(messageContext);
 
         MessageConsumer<M> consumer = findConsumer(message.getClass())
                 .orElseThrow(() -> new QueuebaccaConfigurationException("No consumer available for message '" +  message.getClass().getName() + "'"));
-        consumer.consume(message, messageContext);
+        return consumer.consume(message, messageContext);
     }
 
     @SuppressWarnings("unchecked")
