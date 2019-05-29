@@ -218,9 +218,11 @@ public final class SqsCourierMessageBinRegistry {
         Map<String, String> tagMap = tags.stream().collect(Collectors.toMap(SqsTag::getKey, SqsTag::getValue));
         TagQueueRequest tagQueueRequest = new TagQueueRequest(queueUrl, tagMap);
 
-        for(int i = 0; i < configuration.getInt(SQS_TAGGING_RETRY_ATTEMPTS_PROPERTY, SQS_TAGGING_RETRY_ATTEMPTS_DEFAULT); i++) {
+        int attempts = 0;
+        do {
             try {
                 client.tagQueue(tagQueueRequest);
+                break;
             } catch (AmazonSQSException e) {
                 if (e.getErrorCode().equals("RequestThrottled")) {
                     try {
@@ -232,6 +234,10 @@ public final class SqsCourierMessageBinRegistry {
                     throw e;
                 }
             }
+        } while (++attempts < configuration.getInt(SQS_TAGGING_RETRY_ATTEMPTS_PROPERTY, SQS_TAGGING_RETRY_ATTEMPTS_DEFAULT));
+
+        if (attempts == SQS_TAGGING_RETRY_ATTEMPTS_DEFAULT) {
+            LOGGER.warn("Failed to tag queue '{}'", queueUrl);
         }
     }
 
