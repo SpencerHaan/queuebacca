@@ -218,7 +218,8 @@ public final class SqsCourierMessageBinRegistry {
         Map<String, String> tagMap = tags.stream().collect(Collectors.toMap(SqsTag::getKey, SqsTag::getValue));
         TagQueueRequest tagQueueRequest = new TagQueueRequest(queueUrl, tagMap);
 
-        int attempts = 0;
+        int maxAttempts = configuration.getInt(SQS_TAGGING_RETRY_ATTEMPTS_PROPERTY, SQS_TAGGING_RETRY_ATTEMPTS_DEFAULT);
+        int currentAttempt = 0;
         do {
             try {
                 client.tagQueue(tagQueueRequest);
@@ -234,9 +235,9 @@ public final class SqsCourierMessageBinRegistry {
                     throw e;
                 }
             }
-        } while (++attempts < configuration.getInt(SQS_TAGGING_RETRY_ATTEMPTS_PROPERTY, SQS_TAGGING_RETRY_ATTEMPTS_DEFAULT));
+        } while (++currentAttempt < maxAttempts);
 
-        if (attempts == SQS_TAGGING_RETRY_ATTEMPTS_DEFAULT) {
+        if (currentAttempt == maxAttempts) {
             LOGGER.warn("Failed to tag queue '{}'", queueUrl);
         }
     }
