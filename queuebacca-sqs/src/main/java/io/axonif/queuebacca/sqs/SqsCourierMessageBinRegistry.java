@@ -31,6 +31,7 @@ import org.slf4j.LoggerFactory;
 
 import com.amazonaws.AmazonServiceException;
 import com.amazonaws.services.sqs.AmazonSQS;
+import com.amazonaws.services.sqs.model.AmazonSQSException;
 import com.amazonaws.services.sqs.model.CreateQueueRequest;
 import com.amazonaws.services.sqs.model.GetQueueAttributesRequest;
 import com.amazonaws.services.sqs.model.QueueAttributeName;
@@ -50,20 +51,33 @@ public final class SqsCourierMessageBinRegistry {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(SqsCourierMessageBinRegistry.class);
 
+    private static final String SQS_TAGGING_RETRY_ATTEMPTS_PROPERTY = "queuebacca.sqs.tagging.retryAttempts";
+    private static final String SQS_TAGGING_RETRY_FREQUENCY_PROPERTY = "queuebacca.sqs.tagging.retryFrequency";
+
+    private static final int SQS_TAGGING_RETRY_ATTEMPTS_DEFAULT = 5;
+    private static final int SQS_TAGGING_RETRY_FREQUENCY_DEFAULT = 1000;
+
     private static final String SQS_QUEUE_PREFIX = "queuebacca.sqs.queues";
     private static final String SQS_QUEUE_PROCESSING = "processing";
     private static final String SQS_QUEUE_RECYCLING = "recycling";
 
+    /**
+     * @deprecated This shouldn't have been brought over from Axonify's source code
+     */
     public static final String SQS_QUEUE_DISCRIMINATOR = SQS_QUEUE_PREFIX + ".discriminator";
+
+    /**
+     * @deprecated This shouldn't have been brought over from Axonify's source code
+     */
     public static final String SQS_QUEUE_ALLOW_PROVISIONING = SQS_QUEUE_PREFIX + ".allowProvisioning";
 
-    public static final int DEFAULT_RETRIES = 15;
-    public static final int DEFAULT_RETRIES_RECYCLING = 15;
-    public static final int DEFAULT_DELAY_SECONDS = 0;
-    public static final int DEFAULT_MAXIMUM_MESSAGE_SIZE = 262144;
-    public static final int DEFAULT_MESSAGE_RETENTION_PERIOD = 345600;
-    public static final int DEFAULT_RECEIVE_MESSAGE_WAIT_TIME_SECONDS = 0;
-    public static final Duration TRASH_QUEUE_VISIBILITY_TIMEOUT = Duration.ofSeconds(30);
+    private static final int DEFAULT_RETRIES = 15;
+    private static final int DEFAULT_RETRIES_RECYCLING = 15;
+    private static final int DEFAULT_DELAY_SECONDS = 0;
+    private static final int DEFAULT_MAXIMUM_MESSAGE_SIZE = 262144;
+    private static final int DEFAULT_MESSAGE_RETENTION_PERIOD = 345600;
+    private static final int DEFAULT_RECEIVE_MESSAGE_WAIT_TIME_SECONDS = 0;
+    private static final Duration TRASH_QUEUE_VISIBILITY_TIMEOUT = Duration.ofSeconds(30);
 
     private final Map<String, CourierProfile> courierProfiles = new ConcurrentHashMap<>();
     private final AmazonSQS client;
@@ -138,8 +152,8 @@ public final class SqsCourierMessageBinRegistry {
             setQueueAttributes(recyclingQueueUrl,  courier.getVisibilityTimeout(), configuration.subset(SQS_QUEUE_RECYCLING), jsonSerializer.toJson(recyclingRedrivePolicy));
 
             if (!courier.getTags().isEmpty()) {
-                setTags(processingQueueUrl, courier.getTags());
-                setTags(recyclingQueueUrl, courier.getTags());
+                setTags(processingQueueUrl, courier.getTags(), configuration);
+                setTags(recyclingQueueUrl, courier.getTags(), configuration);
             }
             LOGGER.info("Provisioned queues for courier '{}'", courier.getName());
         }
@@ -200,11 +214,32 @@ public final class SqsCourierMessageBinRegistry {
         client.setQueueAttributes(attributesRequest);
     }
 
-    private void setTags(String queueUrl, Collection<SqsTag> tags) {
+    private void setTags(String queueUrl, Collection<SqsTag> tags, Configuration configuration) {
         Map<String, String> tagMap = tags.stream().collect(Collectors.toMap(SqsTag::getKey, SqsTag::getValue));
         TagQueueRequest tagQueueRequest = new TagQueueRequest(queueUrl, tagMap);
 
-        client.tagQueue(tagQueueRequest);
+        int maxAttempts = configuration.getInt(SQS_TAGGING_RETRY_ATTEMPTS_PROPERTY, SQS_TAGGING_RETRY_ATTEMPTS_DEFAULT);
+        int currentAttempt = 0;
+        do {
+            try {
+                client.tagQueue(tagQueueRequest);
+                break;
+            } catch (AmazonSQSException e) {
+                if (e.getErrorCode().equals("RequestThrottled")) {
+                    try {
+                        Thread.sleep(configuration.getInt(SQS_TAGGING_RETRY_FREQUENCY_PROPERTY, SQS_TAGGING_RETRY_FREQUENCY_DEFAULT));
+                    } catch (InterruptedException ex) {
+                        // Do nothing
+                    }
+                } else {
+                    throw e;
+                }
+            }
+        } while (++currentAttempt < maxAttempts);
+
+        if (currentAttempt == maxAttempts) {
+            LOGGER.warn("Failed to tag queue '{}'", queueUrl);
+        }
     }
 
     private class CourierProfile {
