@@ -26,7 +26,7 @@ import java.util.Queue;
 import java.util.stream.Collectors;
 
 /**
- * A {@link MessageConsumer} that allows for additional, pre-processing of {@link Message Messages} using a chain
+ * A {@link MessageConsumer} that allows for additional, processing of {@link Message Messages} using a chain
  * of responsibility.
  *
  * @param <M> the message type
@@ -34,7 +34,7 @@ import java.util.stream.Collectors;
 public final class 	ScopedMessageConsumer<M extends Message> implements MessageConsumer<M> {
 
 	/**
-	 * A pre-processor to provide additional processing before a {@link Message} is consumed.
+	 * A processor to provide additional processing before or after a {@link Message} is consumed.
 	 */
 	public interface MessageScope {
 
@@ -52,7 +52,7 @@ public final class 	ScopedMessageConsumer<M extends Message> implements MessageC
 	}
 
 	/**
-	 * The {@link MessageScope} chain used to continue invoking pre-processors until the final call to the {@link MessageConsumer}.
+	 * The {@link MessageScope} chain used to continue invoking processors until the final call to the {@link MessageConsumer}.
 	 */
 	public interface MessageScopeChain {
 
@@ -67,11 +67,11 @@ public final class 	ScopedMessageConsumer<M extends Message> implements MessageC
 
 	/**
 	 * Creates a new instance of a {@link ScopedMessageConsumer} with a {@link MessageConsumer} it will delegate to,
-	 * and one or more {@link MessageScope PreProcessors}.
+	 * and one or more {@link MessageScope MessageScopes}.
 	 *
 	 * @param consumer the consumer being decorated
-	 * @param messageScope the first pre-processor
- 	 * @param messageScopes any additional pre-processors
+	 * @param messageScope the first processor
+	 * @param messageScopes any additional processors
 	 */
 	public ScopedMessageConsumer(MessageConsumer<M> consumer, MessageScope messageScope, MessageScope... messageScopes) {
 		requireNonNull(messageScope);
@@ -84,7 +84,7 @@ public final class 	ScopedMessageConsumer<M extends Message> implements MessageC
 	/**
 	 * {@inheritDoc}
 	 * <p>
-	 *     This consumer will run the {@link Message} through a chain of {@link MessageScope PreProcessors} before
+	 *     This consumer will run the {@link Message} through a chain of {@link MessageScope MessageScopes} before
 	 *     invoking it's {@link MessageConsumer}.
 	 * </p>
 	 */
@@ -98,7 +98,7 @@ public final class 	ScopedMessageConsumer<M extends Message> implements MessageC
 	}
 
 	/**
-	 * The {@link MessageScopeChain} implementation containing a queue of {@link MessageScope PreProcessors}.
+	 * The {@link MessageScopeChain} implementation containing a queue of {@link MessageScope MessageScopes}.
 	 */
 	private final class ConcreteMessageScopeChain implements MessageScopeChain {
 
