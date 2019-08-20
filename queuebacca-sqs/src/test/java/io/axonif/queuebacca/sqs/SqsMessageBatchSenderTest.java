@@ -16,21 +16,9 @@
 
 package io.axonif.queuebacca.sqs;
 
-import com.amazonaws.services.sqs.AmazonSQS;
-import com.amazonaws.services.sqs.model.BatchResultErrorEntry;
-import com.amazonaws.services.sqs.model.SendMessageBatchRequest;
-import com.amazonaws.services.sqs.model.SendMessageBatchRequestEntry;
-import com.amazonaws.services.sqs.model.SendMessageBatchResult;
-import com.amazonaws.services.sqs.model.SendMessageBatchResultEntry;
-import com.amazonaws.services.sqs.model.SendMessageResult;
-import io.axonif.queuebacca.Message;
-import io.axonif.queuebacca.OutgoingEnvelope;
-import io.axonif.queuebacca.exceptions.QueuebaccaException;
-import io.axonif.queuebacca.util.MessageSerializer;
-import org.junit.Test;
-import org.mockito.Matchers;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import static org.junit.Assert.assertEquals;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -40,9 +28,22 @@ import java.util.TreeSet;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import static org.junit.Assert.assertEquals;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import org.junit.Test;
+import org.mockito.Matchers;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.amazonaws.services.sqs.AmazonSQS;
+import com.amazonaws.services.sqs.model.BatchResultErrorEntry;
+import com.amazonaws.services.sqs.model.SendMessageBatchRequest;
+import com.amazonaws.services.sqs.model.SendMessageBatchRequestEntry;
+import com.amazonaws.services.sqs.model.SendMessageBatchResult;
+import com.amazonaws.services.sqs.model.SendMessageBatchResultEntry;
+import com.amazonaws.services.sqs.model.SendMessageResult;
+
+import io.axonif.queuebacca.Message;
+import io.axonif.queuebacca.OutgoingEnvelope;
+import io.axonif.queuebacca.util.MessageSerializer;
 
 public class SqsMessageBatchSenderTest {
 
@@ -54,7 +55,7 @@ public class SqsMessageBatchSenderTest {
 	@Test
 	public void send() {
 		when(mockAmazonSQS.sendMessageBatch(Matchers.any())).thenAnswer(invocation -> {
-			SendMessageBatchRequest request = invocation.getArgumentAt(0, SendMessageBatchRequest.class);
+			SendMessageBatchRequest request = invocation.getArgument(0, SendMessageBatchRequest.class);
 			Collection<SendMessageBatchResultEntry> successful = request.getEntries().stream()
 					.map(e -> new SendMessageBatchResultEntry().withMessageId(UUID.randomUUID().toString()).withId(e.getId()))
 					.collect(Collectors.toList());
@@ -79,7 +80,7 @@ public class SqsMessageBatchSenderTest {
 	@Test
 	public void send_MessageRetry() {
 		when(mockAmazonSQS.sendMessageBatch(Matchers.any())).thenAnswer(invocation -> {
-			SendMessageBatchRequest request = invocation.getArgumentAt(0, SendMessageBatchRequest.class);
+			SendMessageBatchRequest request = invocation.getArgument(0, SendMessageBatchRequest.class);
 
 			List<SendMessageBatchRequestEntry> entries = new ArrayList<>(request.getEntries());
 			SendMessageBatchRequestEntry requestEntry = entries.remove(0);
