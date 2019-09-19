@@ -32,7 +32,7 @@ public class ScopedMessageConsumerTest {
 	@Test(expected = NullPointerException.class)
 	public void consume_nullMessage() {
 		ScopedMessageConsumer<Message> messageConsumer = new ScopedMessageConsumer<>((message, context) -> {}, new TestMessageScope());
-		messageConsumer.consume(null, new Context("", 0, Instant.now()));
+		messageConsumer.consume(null, new MessageContext("", 0, Instant.now(), "rawMessage"));
 	}
 
 	@Test(expected = NullPointerException.class)
@@ -50,7 +50,7 @@ public class ScopedMessageConsumerTest {
 		MessageConsumer<Message> innerConsumer = (message, context) -> called.set(true);
 
 		ScopedMessageConsumer<Message> messageConsumer = new ScopedMessageConsumer<>(innerConsumer, testMessageScope);
-		messageConsumer.consume(new TestMessage(), new Context(expectedId, 0, Instant.now()));
+		messageConsumer.consume(new TestMessage(), new MessageContext(expectedId, 0, Instant.now(), "rawMessage"));
 
 		assertTrue(called.get());
 		assertEquals(expectedId, testMessageScope.messageId);
@@ -65,7 +65,7 @@ public class ScopedMessageConsumerTest {
 		MessageConsumer<Message> innerConsumer = (message, context) -> called.set(true);
 
 		ScopedMessageConsumer<Message> messageConsumer = new ScopedMessageConsumer<>(innerConsumer, testMessageScope);
-		messageConsumer.consume(new TestMessage(), new Context(expectedId, 0, Instant.now()));
+		messageConsumer.consume(new TestMessage(), new MessageContext(expectedId, 0, Instant.now(), "rawMessage"));
 
 		assertFalse(called.get());
 		assertEquals(expectedId, testMessageScope.messageId);
@@ -76,7 +76,7 @@ public class ScopedMessageConsumerTest {
 		ScopedMessageConsumer<Message> messageConsumer = new ScopedMessageConsumer<>((message, context) -> {
 			throw new RuntimeException();
 		}, new TestMessageScope());
-		messageConsumer.consume(new TestMessage(), new Context("", 0, Instant.now()));
+		messageConsumer.consume(new TestMessage(), new MessageContext("", 0, Instant.now(), "rawMessage"));
 	}
 
 	private class TestMessage implements Message { }
@@ -86,9 +86,9 @@ public class ScopedMessageConsumerTest {
 		private String messageId;
 
 		@Override
-		public <M> void wrap(M message, Context context, MessageScopeChain messageScopeChain) {
+		public <M> void wrap(M message, MessageContext messageContext, MessageScopeChain messageScopeChain) {
 			messageScopeChain.next();
-			messageId = context.getMessageId();
+			messageId = messageContext.getMessageId();
 		}
 	}
 
@@ -97,8 +97,8 @@ public class ScopedMessageConsumerTest {
 		private String messageId;
 
 		@Override
-		public <M> void wrap(M message, Context context, MessageScopeChain messageScopeChain) {
-			messageId = context.getMessageId();
+		public <M> void wrap(M message, MessageContext messageContext, MessageScopeChain messageScopeChain) {
+			messageId = messageContext.getMessageId();
 		}
 	}
 }

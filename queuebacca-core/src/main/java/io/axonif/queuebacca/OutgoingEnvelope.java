@@ -27,16 +27,19 @@ public final class OutgoingEnvelope<M extends Message> {
 
     private final String messageId;
     private final M message;
+    private final String rawMessage;
 
     /**
      * Creates a new instance of a {@link OutgoingEnvelope} with a {@link M message} and it's unique id.
      *
      * @param messageId the message id
      * @param message the message
+     * @param rawMessage the serialized representing of the message
      */
-    public OutgoingEnvelope(String messageId, M message) {
+    public OutgoingEnvelope(String messageId, M message, String rawMessage) {
         this.messageId = requireNonNull(messageId);
         this.message = requireNonNull(message);
+        this.rawMessage = requireNonNull(rawMessage);
     }
 
     /**
@@ -55,5 +58,14 @@ public final class OutgoingEnvelope<M extends Message> {
      */
     public M getMessage() {
         return message;
+    }
+
+    /**
+     * The serialized representation of the message.
+     *
+     * @return the raw message
+     */
+    public String getRawMessage() {
+        return rawMessage;
     }
 }

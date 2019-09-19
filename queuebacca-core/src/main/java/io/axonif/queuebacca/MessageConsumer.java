@@ -33,11 +33,11 @@ public interface MessageConsumer<M extends Message> {
 	}
 
 	/**
-	 * Consumes the {@link M message}. A {@link Context} is provided to include additional information about the
+	 * Consumes the {@link M message}. A {@link MessageContext} is provided to include additional information about the
 	 * {@link Message}.
 	 *
 	 * @param message the message being consumed
-	 * @param context the context
+	 * @param messageContext the context
 	 */
-	void consume(M message, Context context);
+	void consume(M message, MessageContext messageContext);
 }

@@ -42,12 +42,12 @@ public final class ExceptionResolver {
 		return new Builder();
 	}
 
-	public Resolution resolve(Exception exception, Context context) {
+	public Resolution resolve(Exception exception, MessageContext messageContext) {
 		Optional<ExceptionHandler<Exception>> handler = findExceptionHandler(exception.getClass());
 		if (handler.isPresent()) {
-			return handler.get().handle(exception, context);
+			return handler.get().handle(exception, messageContext);
 		} else {
-			LOGGER.error("Error occurred '{}'", context.getMessageId(), exception);
+			LOGGER.error("Error occurred '{}'", messageContext.getMessageId(), exception);
 			return Resolution.RETRY;
 		}
 	}
@@ -70,7 +70,7 @@ public final class ExceptionResolver {
 
 	public interface ExceptionHandler<E extends Exception> {
 
-		Resolution handle(E exception, Context context);
+		Resolution handle(E exception, MessageContext messageContext);
 	}
 
 	public static class Builder {

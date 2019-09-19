@@ -40,7 +40,7 @@ public class RoutingMessageConsumerTest {
 	public void consume_nullMessage() {
 		RoutingMessageConsumer<Message> messageConsumer = RoutingMessageConsumer.builder()
 				.build();
-		messageConsumer.consume(null, new Context("", 0, Instant.now()));
+		messageConsumer.consume(null, new MessageContext("", 0, Instant.now(), "rawMessage"));
 	}
 
 	@Test(expected = NullPointerException.class)
@@ -56,7 +56,7 @@ public class RoutingMessageConsumerTest {
 		RoutingMessageConsumer<Message> messageConsumer = RoutingMessageConsumer.builder()
 				.registerMessageRoute(Message.class, (message, context) -> called.set(true))
 				.build();
-		messageConsumer.consume(new MessageType1(), new Context("", 0, Instant.now()));
+		messageConsumer.consume(new MessageType1(), new MessageContext("", 0, Instant.now(), "rawMessage"));
 
 		assertTrue(called.get());
 	}
@@ -67,7 +67,7 @@ public class RoutingMessageConsumerTest {
 		RoutingMessageConsumer<MessageType1> messageConsumer = RoutingMessageConsumer.<MessageType1>builder()
 				.registerMessageRoute(MessageType1.class, (message, context) -> called1.set(true))
 				.build();
-		messageConsumer.consume(new MessageType1(), new Context("", 0, Instant.now()));
+		messageConsumer.consume(new MessageType1(), new MessageContext("", 0, Instant.now(), "rawMessage"));
 
 		assertTrue(called1.get());
 	}
@@ -84,8 +84,8 @@ public class RoutingMessageConsumerTest {
 				.registerMessageRoute(MessageType1.class, (message, context) -> actualMessage1Id.set(context.getMessageId()))
 				.registerMessageRoute(MessageType2.class, (message, context) -> actualMessage2Id.set(context.getMessageId()))
 				.build();
-		messageConsumer.consume(new MessageType1(), new Context(expectedMessage1Id, 0, Instant.now()));
-		messageConsumer.consume(new MessageType2(), new Context(expectedMessage2Id, 0, Instant.now()));
+		messageConsumer.consume(new MessageType1(), new MessageContext(expectedMessage1Id, 0, Instant.now(), "rawMessage"));
+		messageConsumer.consume(new MessageType2(), new MessageContext(expectedMessage2Id, 0, Instant.now(), "rawMessage"));
 
 		assertEquals(expectedMessage1Id, actualMessage1Id.get());
 		assertEquals(expectedMessage2Id, actualMessage2Id.get());
@@ -95,7 +95,7 @@ public class RoutingMessageConsumerTest {
 	public void consume_noRoute() {
 		RoutingMessageConsumer<Message> messageConsumer = RoutingMessageConsumer.builder()
 				.build();
-		messageConsumer.consume(new MessageType1(), new Context("", 0, Instant.now()));
+		messageConsumer.consume(new MessageType1(), new MessageContext("", 0, Instant.now(), "rawMessage"));
 	}
 
 	private class MessageType1 implements Message { }

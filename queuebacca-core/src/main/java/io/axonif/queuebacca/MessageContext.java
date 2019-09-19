@@ -23,23 +23,26 @@ import java.time.Instant;
 /**
  * Contains contextual information for the consumption of a {@link Message}.
  */
-public final class Context {
+public final class MessageContext {
 
 	private final String messageId;
 	private final int readCount;
 	private final Instant firstReceived;
+	private final String rawMessage;
 
 	/**
-	 * Creates a new instance of a {@link Context} with the provided message id.
+	 * Creates a new instance of a {@link MessageContext} with the provided message id.
 	 *
 	 * @param messageId the unique id of the message
 	 * @param readCount the number of times the message has been read
 	 * @param firstReceived the first time the message was received as an {@link Instant}
+	 * @param rawMessage the serialized representing of the message
 	 */
-	public Context(String messageId, int readCount, Instant firstReceived) {
+	public MessageContext(String messageId, int readCount, Instant firstReceived, String rawMessage) {
 		this.messageId = requireNonNull(messageId);
 		this.readCount = readCount;
 		this.firstReceived = requireNonNull(firstReceived);
+		this.rawMessage = requireNonNull(rawMessage);
 	}
 
 	/**
@@ -51,11 +54,30 @@ public final class Context {
 		return messageId;
 	}
 
+	/**
+	 * The number of times a message has been read.
+	 *
+	 * @return the message read count
+	 */
 	public int getReadCount() {
 		return readCount;
 	}
 
+	/**
+	 * The timestamp the message was first received.
+	 *
+	 * @return an {@link Instant} of when the message was first received
+	 */
 	public Instant getFirstReceived() {
 		return firstReceived;
+	}
+
+	/**
+	 * The serialized representation of the message.
+	 *
+	 * @return the raw message
+	 */
+	public String getRawMessage() {
+		return rawMessage;
 	}
 }

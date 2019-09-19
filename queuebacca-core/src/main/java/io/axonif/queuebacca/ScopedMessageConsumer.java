@@ -39,16 +39,16 @@ public final class 	ScopedMessageConsumer<M extends Message> implements MessageC
 	public interface MessageScope {
 
 		/**
-		 * Perform processing using the provided {@link M message} and {@link Context}. In order to continue the chain,
+		 * Perform processing using the provided {@link M message} and {@link MessageContext}. In order to continue the chain,
 		 * a call to {@link MessageScopeChain#next()} is required. Failing to do so will result in
 		 * the message being disposed of and considered successfully consumed, which may be the desired result.
 		 *
 		 * @param message the message being consumed
-		 * @param context the context of the message
+		 * @param messageContext the context of the message
 		 * @param messageScopeChain the chain to continue processing to consumption
 		 * @param <M> the message type
 		 */
-		<M> void wrap(M message, Context context, MessageScopeChain messageScopeChain);
+		<M> void wrap(M message, MessageContext messageContext, MessageScopeChain messageScopeChain);
 	}
 
 	/**
@@ -89,11 +89,11 @@ public final class 	ScopedMessageConsumer<M extends Message> implements MessageC
 	 * </p>
 	 */
 	@Override
-	public void consume(M message, Context context) {
+	public void consume(M message, MessageContext messageContext) {
 		requireNonNull(message);
-		requireNonNull(context);
+		requireNonNull(messageContext);
 
-		ConcreteMessageScopeChain messageScopeChain = new ConcreteMessageScopeChain(new LinkedList<>(messageScopes), message, context);
+		ConcreteMessageScopeChain messageScopeChain = new ConcreteMessageScopeChain(new LinkedList<>(messageScopes), message, messageContext);
 		messageScopeChain.next();
 	}
 
@@ -104,24 +104,24 @@ public final class 	ScopedMessageConsumer<M extends Message> implements MessageC
 
 		private final Queue<MessageScope> messageScopes;
 		private final M message;
-		private final Context context;
+		private final MessageContext messageContext;
 
-		ConcreteMessageScopeChain(Queue<MessageScope> messageScopes, M message, Context context) {
+		ConcreteMessageScopeChain(Queue<MessageScope> messageScopes, M message, MessageContext messageContext) {
 			this.messageScopes = messageScopes;
 			this.message = message;
-			this.context = context;
+			this.messageContext = messageContext;
 		}
 
 		@Override
 		public void next() {
 			requireNonNull(message);
-			requireNonNull(context);
+			requireNonNull(messageContext);
 
 			if (!messageScopes.isEmpty()) {
 				MessageScope messageScope = messageScopes.poll();
-				messageScope.wrap(message, context, this);
+				messageScope.wrap(message, messageContext, this);
 			} else {
-				consumer.consume(message, context);
+				consumer.consume(message, messageContext);
 			}
 		}
 	}

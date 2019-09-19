@@ -193,13 +193,13 @@ public final class Subscriber {
 
 		private ThreadPoolWorkExecutor.WorkOrder newWorkOrder(IncomingEnvelope<M> envelope) {
 			return () -> {
-				Context context = new Context(envelope.getMessageId(), envelope.getReadCount(), envelope.getFirstReceived());
-				MDC.put("queuebaccaMessageId", context.getMessageId());
-				MDC.put("queuebaccaMessageReadCount", String.valueOf(context.getReadCount()));
+				MessageContext messageContext = new MessageContext(envelope.getMessageId(), envelope.getReadCount(), envelope.getFirstReceived(), envelope.getRawMessage());
+				MDC.put("queuebaccaMessageId", messageContext.getMessageId());
+				MDC.put("queuebaccaMessageReadCount", String.valueOf(messageContext.getReadCount()));
 				try {
 					long start = System.currentTimeMillis();
 					try {
-						consumer.consume(envelope.getMessage(), context);
+						consumer.consume(envelope.getMessage(), messageContext);
 					} finally {
 						long duration = System.currentTimeMillis() - start;
 						timingEventSupport.fireEvent(messageBin, envelope.getMessage().getClass(), envelope.getMessageId(), duration);
@@ -207,7 +207,7 @@ public final class Subscriber {
 					logger.info("Consumed '{}'; disposing", envelope.getMessageId());
 					client.disposeMessage(messageBin, envelope);
 				} catch (Exception e) {
-					ExceptionResolver.Resolution resolution = exceptionResolver.resolve(e, context);
+					ExceptionResolver.Resolution resolution = exceptionResolver.resolve(e, messageContext);
 					switch (resolution) {
 						case TERMINATE:
 							logger.warn("Terminated '{}' with body {}; disposing", envelope.getMessageId(), envelope.getRawMessage());

@@ -39,7 +39,6 @@ import com.amazonaws.services.sqs.model.SendMessageRequest;
 import com.amazonaws.services.sqs.model.SendMessageResult;
 import io.axonif.queuebacca.Message;
 import io.axonif.queuebacca.OutgoingEnvelope;
-import io.axonif.queuebacca.exceptions.QueuebaccaException;
 import io.axonif.queuebacca.util.MessageSerializer;
 
 /**
@@ -106,7 +105,7 @@ final class SqsMessageBatchSender<M extends Message> {
 
         Collection<OutgoingEnvelope<M>> envelopes = batchResult.getSuccessful().stream()
                 .peek(s ->  logger.info("Sent SQS message '{}'", s.getMessageId()))
-                .map(s -> new OutgoingEnvelope<>(s.getMessageId(), batch.getMessage(s.getId())))
+                .map(s -> new OutgoingEnvelope<>(s.getMessageId(), batch.getMessage(s.getId()), batch.getMessageBody(s.getId())))
                 .collect(Collectors.toList());
 
         batchResult.getFailed().forEach(f -> {
@@ -118,7 +117,7 @@ final class SqsMessageBatchSender<M extends Message> {
                         SendMessageRequest retryMessageRequest = new SendMessageRequest(queueUrl, e.getMessageBody());
                         SendMessageResult result = client.sendMessage(retryMessageRequest);
                         logger.info("Sent SQS message '{}'", result.getMessageId());
-                        OutgoingEnvelope<M> envelope = new OutgoingEnvelope<>(result.getMessageId(), batch.getMessage(e.getId()));
+                        OutgoingEnvelope<M> envelope = new OutgoingEnvelope<>(result.getMessageId(), batch.getMessage(e.getId()), batch.getMessageBody(e.getId()));
                         envelopes.add(envelope);
                     });
         });
@@ -147,6 +146,10 @@ final class SqsMessageBatchSender<M extends Message> {
 
         private M getMessage(String id) {
             return entries.get(id).getMessage();
+        }
+
+        private String getMessageBody(String id) {
+            return entries.get(id).getMessageBody();
         }
 
         private SendMessageBatchRequest toBatchRequest(int delay) {

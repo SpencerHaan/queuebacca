@@ -48,7 +48,7 @@ public class TestClient implements Client {
 		Instant availableBy = Instant.now().plusSeconds(delay);
 		MessageWrapper<M> messageWrapper = new MessageWrapper<>(message, availableBy);
 		getQueue(messageBin).offer(messageWrapper);
-		return new OutgoingEnvelope<>(messageWrapper.getId(), messageWrapper.getMessage());
+		return new OutgoingEnvelope<>(messageWrapper.getId(), messageWrapper.getMessage(), "rawMessage");
 	}
 
 	@Override

@@ -22,7 +22,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.amazonaws.services.sqs.model.AmazonSQSException;
-import io.axonif.queuebacca.Context;
+import io.axonif.queuebacca.MessageContext;
 import io.axonif.queuebacca.ExceptionResolver;
 
 public class AmazonSqsExceptionHandler implements ExceptionResolver.ExceptionHandler<AmazonSQSException> {
@@ -30,7 +30,7 @@ public class AmazonSqsExceptionHandler implements ExceptionResolver.ExceptionHan
 	private static final Logger LOGGER = LoggerFactory.getLogger(AmazonSqsExceptionHandler.class);
 
 	@Override
-	public Resolution handle(AmazonSQSException exception, Context context) {
+	public Resolution handle(AmazonSQSException exception, MessageContext messageContext) {
 		LOGGER.error("SQS error occurred", exception);
 		return Resolution.RETRY;
 	}

@@ -56,13 +56,13 @@ public final class RoutingMessageConsumer<M extends Message> implements MessageC
      * @throws QueuebaccaConfigurationException if no consumer is available for the provided message type
      */
     @Override
-    public void consume(M message, Context context) {
+    public void consume(M message, MessageContext messageContext) {
         requireNonNull(message);
-        requireNonNull(context);
+        requireNonNull(messageContext);
 
         MessageConsumer<M> consumer = findConsumer(message.getClass())
                 .orElseThrow(() -> new QueuebaccaConfigurationException("No consumer available for message '" +  message.getClass().getName() + "'"));
-        consumer.consume(message, context);
+        consumer.consume(message, messageContext);
     }
 
     @SuppressWarnings("unchecked")

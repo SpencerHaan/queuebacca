@@ -107,7 +107,7 @@ public final class SqsClient implements Client {
 
         LoggerFactory.getLogger(messageBin.getName()).info("Sent SQS message '{}'", messageId);
 
-        return new OutgoingEnvelope<>(messageId, message);
+        return new OutgoingEnvelope<>(messageId, message, messageBody);
     }
 
     /**

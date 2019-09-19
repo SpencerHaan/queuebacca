@@ -33,11 +33,11 @@ public final class Publisher {
     public interface PostProcessor {
 
         /**
-         * Perform processing using the provided {@link Context} if needed.
+         * Perform processing using the provided {@link MessageContext} if needed.
          *
-         * @param context the context of the recently published message.
+         * @param messageContext the context of the recently published message.
          */
-        void process(Context context);
+        void process(MessageContext messageContext);
     }
 
     // Default post processor that does nothing
@@ -80,6 +80,10 @@ public final class Publisher {
         publish(message, 0);
     }
 
+    public void publish(Message message, PostProcessor postProcessor) {
+        publish(message, 0, postProcessor);
+    }
+
     /**
      * Publish a single message with a specified delay.
      *
@@ -88,10 +92,16 @@ public final class Publisher {
      * @throws NullPointerException if the message is null
      */
     public void publish(Message message, int delay) {
+        publish(message, delay, NONE);
+    }
+
+    public void publish(Message message, int delay, PostProcessor postProcessor) {
         requireNonNull(message);
 
         OutgoingEnvelope<?> envelope = client.sendMessage(messageBin, message, delay);
-        postProcessor.process(new Context(envelope.getMessageId(), 0, Instant.now()));
+        MessageContext messageContext = new MessageContext(envelope.getMessageId(), 0, Instant.now(), envelope.getRawMessage());
+        postProcessor.process(messageContext);
+        this.postProcessor.process(messageContext);
     }
 
     /**
@@ -104,6 +114,10 @@ public final class Publisher {
         publish(messages, 0);
     }
 
+    public void publish(Collection<? extends Message> messages, PostProcessor postProcessor) {
+        publish(messages, 0, postProcessor);
+    }
+
     /**
      * Publishes a collection of messages with a specified delay for each messagec.
      *
@@ -112,10 +126,17 @@ public final class Publisher {
      * @throws NullPointerException if messages is null
      */
     public void publish(Collection<? extends Message> messages, int delay) {
+        publish(messages, delay, NONE);
+    }
+
+    public void publish(Collection<? extends Message> messages, int delay, PostProcessor postProcessor) {
         requireNonNull(messages);
 
         client.sendMessages(messageBin, messages, delay).stream()
-                .map(e -> new Context(e.getMessageId(), 0, Instant.now()))
-                .forEach(postProcessor::process);
+                .map(e -> new MessageContext(e.getMessageId(), 0, Instant.now(), e.getRawMessage()))
+                .forEach(c -> {
+                    postProcessor.process(c);
+                    this.postProcessor.process(c);
+                });
     }
 }
