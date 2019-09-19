@@ -46,7 +46,7 @@ import io.axonif.queuebacca.Message;
 import io.axonif.queuebacca.MessageBin;
 import io.axonif.queuebacca.OutgoingEnvelope;
 import io.axonif.queuebacca.exceptions.QueuebaccaException;
-import io.axonif.queuebacca.util.MessageSerializer;
+import io.axonif.queuebacca.sqs.json.MoshiMessageSerializer;
 
 /**
  * An SQS implementation of {@link Client}.
@@ -71,21 +71,25 @@ public final class SqsClient implements Client {
 
     private final MessageRefresher refresher = new MessageRefresher();
     private final AmazonSQS client;
-    private final MessageSerializer serializer;
     private final SqsCourierMessageBinRegistry messageBinRegistry;
+    private final MessageSerializer serializer;
 
     /**
      * Creates a new instance of a {@link SqsClient} with the given {@link AmazonSQS client}, {@link MessageSerializer},
      * and {@link SqsCourierMessageBinRegistry}.
      *
      * @param client the AWS SQS client
-     * @param serializer a serializer for turning {@link Message Messages} into strings
      * @param messageBinRegistry a registry containing {@link MessageBin} mappings to SQS queue urls
+     * @param serializer a serializer for turning {@link Message Messages} into strings
      */
-    public SqsClient(AmazonSQS client, MessageSerializer serializer, SqsCourierMessageBinRegistry messageBinRegistry) {
+    private SqsClient(AmazonSQS client, SqsCourierMessageBinRegistry messageBinRegistry, MessageSerializer serializer) {
         this.client = requireNonNull(client);
-        this.serializer = requireNonNull(serializer);
         this.messageBinRegistry = requireNonNull(messageBinRegistry);
+        this.serializer = requireNonNull(serializer);
+    }
+
+    public static Builder builder(AmazonSQS client, SqsCourierMessageBinRegistry messageBinRegistry) {
+        return new Builder(client, messageBinRegistry);
     }
 
     /**
@@ -97,7 +101,7 @@ public final class SqsClient implements Client {
         requireNonNull(messageBin);
         requireNonNull(message);
 
-        String messageBody = serializer.toString(message);
+        @SuppressWarnings("unchecked") String messageBody = serializer.toString(message, (Class<M>) message.getClass());
 
         SendMessageRequest sqsRequest = new SendMessageRequest()
                 .withQueueUrl(messageBinRegistry.getQueueUrl(messageBin))
@@ -199,8 +203,8 @@ public final class SqsClient implements Client {
         return new IncomingEnvelope(
                 sqsMessage.getMessageId(),
                 sqsMessage.getReceiptHandle(),
-                Integer.valueOf(sqsMessage.getAttributes().get(APPROXIMATE_RECEIVE_COUNT_ATTRIBUTE)),
-                Instant.ofEpochMilli(Long.valueOf(sqsMessage.getAttributes().get(APPROXIMATE_FIRST_RECEIVE_TIMESTAMP_ATTRIBUTE))),
+                Integer.parseInt(sqsMessage.getAttributes().get(APPROXIMATE_RECEIVE_COUNT_ATTRIBUTE)),
+                Instant.ofEpochMilli(Long.parseLong(sqsMessage.getAttributes().get(APPROXIMATE_FIRST_RECEIVE_TIMESTAMP_ATTRIBUTE))),
                 serializer.fromString(sqsMessage.getBody(), Message.class),
                 sqsMessage.getBody()
         );
@@ -231,6 +235,28 @@ public final class SqsClient implements Client {
             client.changeMessageVisibility(sqsRequest);
 
             scheduleRefresh(envelope, queueUrl, visibilityTimeout, logger);
+        }
+    }
+
+    public static class Builder {
+
+        private final AmazonSQS client;
+        private final SqsCourierMessageBinRegistry messageBinRegistry;
+
+        private MessageSerializer messageSerializer = MoshiMessageSerializer.standard();
+
+        private Builder(AmazonSQS client, SqsCourierMessageBinRegistry messageBinRegistry) {
+            this.client = client;
+            this.messageBinRegistry = messageBinRegistry;
+        }
+
+        public Builder withMessageSerializer(MessageSerializer messageSerializer) {
+            this.messageSerializer = requireNonNull(messageSerializer);
+            return this;
+        }
+
+        public SqsClient build() {
+            return new SqsClient(client, messageBinRegistry, messageSerializer);
         }
     }
 }

@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
-package io.axonif.queuebacca.util;
+package io.axonif.queuebacca.sqs;
 
 public interface MessageSerializer {
 
-	<M> String toString(M message);
+	<M> String toString(M message, Class<M> messageClass);
 
 	<M> M fromString(String body, Class<M> messageClass);
 }

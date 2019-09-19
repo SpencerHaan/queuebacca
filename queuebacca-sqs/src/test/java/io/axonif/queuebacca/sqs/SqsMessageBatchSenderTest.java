@@ -43,7 +43,6 @@ import com.amazonaws.services.sqs.model.SendMessageResult;
 
 import io.axonif.queuebacca.Message;
 import io.axonif.queuebacca.OutgoingEnvelope;
-import io.axonif.queuebacca.util.MessageSerializer;
 
 public class SqsMessageBatchSenderTest {
 
@@ -137,7 +136,7 @@ public class SqsMessageBatchSenderTest {
 	public static class TestMessageSerializer implements MessageSerializer {
 
 		@Override
-		public <M> String toString(M message) {
+		public <M> String toString(M message, Class<M> messageClass) {
 			if (message instanceof TestMessage) {
 				return ((TestMessage) message).value;
 			}

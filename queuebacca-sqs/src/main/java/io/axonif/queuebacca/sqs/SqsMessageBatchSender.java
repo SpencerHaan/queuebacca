@@ -35,12 +35,12 @@ import com.amazonaws.services.sqs.AmazonSQS;
 import com.amazonaws.services.sqs.model.SendMessageBatchRequest;
 import com.amazonaws.services.sqs.model.SendMessageBatchRequestEntry;
 import com.amazonaws.services.sqs.model.SendMessageBatchResult;
+import com.amazonaws.services.sqs.model.SendMessageBatchResultEntry;
 import com.amazonaws.services.sqs.model.SendMessageRequest;
 import com.amazonaws.services.sqs.model.SendMessageResult;
 
 import io.axonif.queuebacca.Message;
 import io.axonif.queuebacca.OutgoingEnvelope;
-import io.axonif.queuebacca.util.MessageSerializer;
 
 /**
  * Simplifies the batching of messages for SQS, ensuring batch sizes are not exceeded due to large individual
@@ -78,7 +78,7 @@ final class SqsMessageBatchSender<M extends Message> {
     void add(M message) {
         requireNonNull(message);
 
-        String messageBody = serializer.toString(message);
+        @SuppressWarnings("unchecked") String messageBody = serializer.toString(message, (Class<M>) message.getClass());
 
         BatchEntry<M> entry = new BatchEntry<>(message, messageBody);
         batchEntries.add(entry);
@@ -112,7 +112,7 @@ final class SqsMessageBatchSender<M extends Message> {
         batchResult.getFailed().forEach(f -> {
             logger.warn("Batch entry '{}' failed: [{}] {}; retrying", new Object[]{ f.getId(), f.getCode(), f.getMessage() });
             batchRequest.getEntries().stream()
-                    .filter(e -> Objects.equals(e.getId(),f.getId()))
+                    .filter(e -> Objects.equals(e.getId(), f.getId()))
                     .findFirst()
                     .ifPresent(e -> {
                         SendMessageRequest retryMessageRequest = new SendMessageRequest(queueUrl, e.getMessageBody());
