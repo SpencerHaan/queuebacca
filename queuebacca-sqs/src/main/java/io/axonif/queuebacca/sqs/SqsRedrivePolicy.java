@@ -16,14 +16,23 @@
 
 package io.axonif.queuebacca.sqs;
 
+import static java.util.Objects.requireNonNull;
+
 public final class SqsRedrivePolicy {
+
+	public static SqsRedrivePolicy NONE = new SqsRedrivePolicy(0, null);
 
 	private final int maxReceiveCount;
 	private final String deadLetterTargetArn;
 
-	public SqsRedrivePolicy(int maxReceiveCount, String deadLetterTargetArn) {
+	private SqsRedrivePolicy(int maxReceiveCount, String deadLetterTargetArn) {
 		this.maxReceiveCount = maxReceiveCount;
 		this.deadLetterTargetArn = deadLetterTargetArn;
+	}
+
+	public static SqsRedrivePolicy create(int maxReceiveCount, String deadLetterTargetArn) {
+		requireNonNull(deadLetterTargetArn);
+		return new SqsRedrivePolicy(maxReceiveCount, deadLetterTargetArn);
 	}
 
 	public int getMaxReceiveCount() {

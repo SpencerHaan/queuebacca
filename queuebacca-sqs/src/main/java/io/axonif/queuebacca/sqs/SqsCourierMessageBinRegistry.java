@@ -82,19 +82,32 @@ public final class SqsCourierMessageBinRegistry {
      *
      * @param client the AWS SQS client
      * @param jsonSerializer a serializer for turning objects into JSON strings
-     * @param queueNameDiscriminator a discriminator that is prefixed to queues
-     * @param allowProvisioning if this registry is allowed to provision queues
-     * @param trashBin a trash bin to act as a recycling bins dead letter queue
+
      */
-    public SqsCourierMessageBinRegistry(AmazonSQS client, JsonSerializer jsonSerializer, String queueNameDiscriminator, boolean allowProvisioning, MessageBin trashBin) {
-        this.client = requireNonNull(client);
-        this.jsonSerializer = requireNonNull(jsonSerializer);
-        this.queueNameDiscriminator = requireNonNull(queueNameDiscriminator);
+    private SqsCourierMessageBinRegistry(AmazonSQS client, JsonSerializer jsonSerializer, String queueNameDiscriminator, boolean allowProvisioning, MessageBin trashBin) {
+        this.client = client;
+        this.jsonSerializer = jsonSerializer;
+        this.queueNameDiscriminator = queueNameDiscriminator;
         this.allowProvisioning = allowProvisioning;
-        this.trashQueueUrl = registerMessageBin(requireNonNull(trashBin), TRASH_QUEUE_VISIBILITY_TIMEOUT);
-        if (allowProvisioning) {
-            setQueueAttributes(trashQueueUrl, TRASH_QUEUE_VISIBILITY_TIMEOUT, new BaseConfiguration(), "");
+        if (trashBin != null) {
+            this.trashQueueUrl = registerMessageBin(trashBin, TRASH_QUEUE_VISIBILITY_TIMEOUT);
+            if (allowProvisioning) {
+                setQueueAttributes(trashQueueUrl, TRASH_QUEUE_VISIBILITY_TIMEOUT, new BaseConfiguration(), SqsRedrivePolicy.NONE);
+            }
+        } else {
+            this.trashQueueUrl = null;
         }
+    }
+
+    /**
+     * A builder for constructing a {@link SqsCourierMessageBinRegistry}.
+     *
+     * @param client a required AWS SQS client
+     * @param jsonSerializer a required JSON serializer for SQS queue configuration
+     * @return a {@link Builder}
+     */
+    public static Builder builder(AmazonSQS client, JsonSerializer jsonSerializer) {
+        return new Builder(client, jsonSerializer);
     }
 
     /**
@@ -135,11 +148,13 @@ public final class SqsCourierMessageBinRegistry {
         String recyclingQueueUrl = registerMessageBin(recyclingBin, courier.getVisibilityTimeout());
 
         if (allowProvisioning) {
-            SqsRedrivePolicy processingRedrivePolicy = new SqsRedrivePolicy(configuration.getInt("retries", DEFAULT_RETRIES), getQueueArn(recyclingQueueUrl));
-            setQueueAttributes(processingQueueUrl, courier.getVisibilityTimeout(), configuration.subset(SQS_QUEUE_PROCESSING), jsonSerializer.toJson(processingRedrivePolicy));
+            SqsRedrivePolicy processingRedrivePolicy = SqsRedrivePolicy.create(configuration.getInt("retries", DEFAULT_RETRIES), getQueueArn(recyclingQueueUrl));
+            setQueueAttributes(processingQueueUrl, courier.getVisibilityTimeout(), configuration.subset(SQS_QUEUE_PROCESSING), processingRedrivePolicy);
 
-            SqsRedrivePolicy recyclingRedrivePolicy = new SqsRedrivePolicy(configuration.getInt("retriesRecycling", DEFAULT_RETRIES_RECYCLING), getQueueArn(trashQueueUrl));
-            setQueueAttributes(recyclingQueueUrl,  courier.getVisibilityTimeout(), configuration.subset(SQS_QUEUE_RECYCLING), jsonSerializer.toJson(recyclingRedrivePolicy));
+            SqsRedrivePolicy recyclingRedrivePolicy = trashQueueUrl != null
+                    ? SqsRedrivePolicy.create(configuration.getInt("retriesRecycling", DEFAULT_RETRIES_RECYCLING), getQueueArn(trashQueueUrl))
+                    : SqsRedrivePolicy.NONE;
+            setQueueAttributes(recyclingQueueUrl,  courier.getVisibilityTimeout(), configuration.subset(SQS_QUEUE_RECYCLING), recyclingRedrivePolicy);
 
             if (!courier.getTags().isEmpty()) {
                 setTags(processingQueueUrl, courier.getTags(), configuration);
@@ -191,7 +206,10 @@ public final class SqsCourierMessageBinRegistry {
         return client.getQueueAttributes(attributesRequest).getAttributes().get(QueueAttributeName.QueueArn.toString());
     }
 
-    private void setQueueAttributes(String queueUrl, Duration visibilityTimeout, Configuration configuration, String redrivePolicy) {
+    private void setQueueAttributes(String queueUrl, Duration visibilityTimeout, Configuration configuration, SqsRedrivePolicy redrivePolicy) {
+        String redrivePolicyValue = redrivePolicy != SqsRedrivePolicy.NONE
+                ? jsonSerializer.toJson(redrivePolicy)
+                : "";
         SetQueueAttributesRequest attributesRequest = new SetQueueAttributesRequest()
                 .withQueueUrl(queueUrl)
                 .addAttributesEntry(QueueAttributeName.DelaySeconds.toString(), String.valueOf(configuration.getInt("delaySeconds", DEFAULT_DELAY_SECONDS)))
@@ -199,7 +217,7 @@ public final class SqsCourierMessageBinRegistry {
                 .addAttributesEntry(QueueAttributeName.MessageRetentionPeriod.toString(), String.valueOf(configuration.getInt("messageRetentionPeriod", DEFAULT_MESSAGE_RETENTION_PERIOD)))
                 .addAttributesEntry(QueueAttributeName.ReceiveMessageWaitTimeSeconds.toString(), String.valueOf(configuration.getInt("receiveMessageWaitTimeSeconds", DEFAULT_RECEIVE_MESSAGE_WAIT_TIME_SECONDS)))
                 .addAttributesEntry(QueueAttributeName.VisibilityTimeout.toString(), String.valueOf(configuration.getLong("visibilityTimeout", visibilityTimeout.getSeconds())))
-                .addAttributesEntry(QueueAttributeName.RedrivePolicy.toString(), redrivePolicy);
+                .addAttributesEntry(QueueAttributeName.RedrivePolicy.toString(), redrivePolicyValue);
 
         client.setQueueAttributes(attributesRequest);
     }
@@ -232,7 +250,7 @@ public final class SqsCourierMessageBinRegistry {
         }
     }
 
-    private class CourierProfile {
+    private static class CourierProfile {
 
         private final String queueUrl;
         private final Duration visibilityTimeout;
@@ -240,6 +258,67 @@ public final class SqsCourierMessageBinRegistry {
         private CourierProfile(String queueUrl, Duration visibilityTimeout) {
             this.queueUrl = requireNonNull(queueUrl);
             this.visibilityTimeout = requireNonNull(visibilityTimeout);
+        }
+    }
+
+    /**
+     * Configures and builds a {@link SqsCourierMessageBinRegistry}.
+     */
+    public static class Builder {
+
+        private final AmazonSQS client;
+        private final JsonSerializer jsonSerializer;
+
+        private String queueNameDiscriminator = null;
+        private boolean allowProvisioning = false;
+        private MessageBin trashBin = null;
+
+        private Builder(AmazonSQS client, JsonSerializer serializer) {
+            this.client = requireNonNull(client);
+            this.jsonSerializer = requireNonNull(serializer);
+        }
+
+        /**
+         * Sets the queue name discriminator value which is used as a prefix for queue names. This is null by default.
+         *
+         * @param queueNameDiscriminator the new queue name discriminator value
+         * @return this {@link Builder} for call chaining
+         */
+        public Builder withQueueNameDiscriminator(String queueNameDiscriminator) {
+            this.queueNameDiscriminator = queueNameDiscriminator;
+            return this;
+        }
+
+        /**
+         * Determines if this {@link SqsCourierMessageBinRegistry} should be allowed to provision (create, configure) the queues. This is false by
+         * default.
+         *
+         * @param allowProvisioning true, if provisioning is allowed, otherwise false
+         * @return this {@link Builder} for call chaining
+         */
+        public Builder withAllowProvisioning(boolean allowProvisioning) {
+            this.allowProvisioning = allowProvisioning;
+            return this;
+        }
+
+        /**
+         * Sets a special {@link MessageBin} to be used as a dead letter queue by the recycling bin.
+         *
+         * @param trashBin the recycling bin's DLQ
+         * @return this {@link Builder} for call chaining
+         */
+        public Builder withTrashBin(MessageBin trashBin) {
+            this.trashBin = trashBin;
+            return this;
+        }
+
+        /**
+         * Constructs a new {@link SqsCourierMessageBinRegistry} instance based on the provided configuration.
+         *
+         * @return a new {@link SqsCourierMessageBinRegistry} instance
+         */
+        public SqsCourierMessageBinRegistry build() {
+            return new SqsCourierMessageBinRegistry(client, jsonSerializer, queueNameDiscriminator, allowProvisioning, trashBin);
         }
     }
 }
