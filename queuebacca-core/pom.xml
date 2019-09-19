@@ -22,7 +22,7 @@
   <parent>
     <groupId>io.axonif</groupId>
     <artifactId>queuebacca</artifactId>
-    <version>0.2.8</version>
+    <version>0.3.0</version>
   </parent>
 
   <artifactId>queuebacca-core</artifactId>

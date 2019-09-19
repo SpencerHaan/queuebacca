@@ -73,26 +73,21 @@ public final class SqsCourierMessageBinRegistry {
     private final AmazonSQS client;
     private final JsonSerializer jsonSerializer;
     private final String queueNameDiscriminator;
+    private final String kmsMasterKeyId;
     private final boolean allowProvisioning;
 
     private final String trashQueueUrl;
 
-    /**
-     * Creates a new instance of a {@link SqsCourierMessageBinRegistry}.
-     *
-     * @param client the AWS SQS client
-     * @param jsonSerializer a serializer for turning objects into JSON strings
-
-     */
-    private SqsCourierMessageBinRegistry(AmazonSQS client, JsonSerializer jsonSerializer, String queueNameDiscriminator, boolean allowProvisioning, MessageBin trashBin) {
+    private SqsCourierMessageBinRegistry(AmazonSQS client, JsonSerializer jsonSerializer, String queueNameDiscriminator, String kmsMasterKeyId, boolean allowProvisioning, MessageBin trashBin) {
         this.client = client;
         this.jsonSerializer = jsonSerializer;
         this.queueNameDiscriminator = queueNameDiscriminator;
+        this.kmsMasterKeyId = kmsMasterKeyId;
         this.allowProvisioning = allowProvisioning;
         if (trashBin != null) {
             this.trashQueueUrl = registerMessageBin(trashBin, TRASH_QUEUE_VISIBILITY_TIMEOUT);
             if (allowProvisioning) {
-                setQueueAttributes(trashQueueUrl, TRASH_QUEUE_VISIBILITY_TIMEOUT, new BaseConfiguration(), SqsRedrivePolicy.NONE);
+                setQueueAttributes(trashQueueUrl, TRASH_QUEUE_VISIBILITY_TIMEOUT, new BaseConfiguration(), SqsRedrivePolicy.NONE, kmsMasterKeyId);
             }
         } else {
             this.trashQueueUrl = null;
@@ -149,12 +144,12 @@ public final class SqsCourierMessageBinRegistry {
 
         if (allowProvisioning) {
             SqsRedrivePolicy processingRedrivePolicy = SqsRedrivePolicy.create(configuration.getInt("retries", DEFAULT_RETRIES), getQueueArn(recyclingQueueUrl));
-            setQueueAttributes(processingQueueUrl, courier.getVisibilityTimeout(), configuration.subset(SQS_QUEUE_PROCESSING), processingRedrivePolicy);
+            setQueueAttributes(processingQueueUrl, courier.getVisibilityTimeout(), configuration.subset(SQS_QUEUE_PROCESSING), processingRedrivePolicy, kmsMasterKeyId);
 
             SqsRedrivePolicy recyclingRedrivePolicy = trashQueueUrl != null
                     ? SqsRedrivePolicy.create(configuration.getInt("retriesRecycling", DEFAULT_RETRIES_RECYCLING), getQueueArn(trashQueueUrl))
                     : SqsRedrivePolicy.NONE;
-            setQueueAttributes(recyclingQueueUrl,  courier.getVisibilityTimeout(), configuration.subset(SQS_QUEUE_RECYCLING), recyclingRedrivePolicy);
+            setQueueAttributes(recyclingQueueUrl,  courier.getVisibilityTimeout(), configuration.subset(SQS_QUEUE_RECYCLING), recyclingRedrivePolicy, kmsMasterKeyId);
 
             if (!courier.getTags().isEmpty()) {
                 setTags(processingQueueUrl, courier.getTags(), configuration);
@@ -206,7 +201,7 @@ public final class SqsCourierMessageBinRegistry {
         return client.getQueueAttributes(attributesRequest).getAttributes().get(QueueAttributeName.QueueArn.toString());
     }
 
-    private void setQueueAttributes(String queueUrl, Duration visibilityTimeout, Configuration configuration, SqsRedrivePolicy redrivePolicy) {
+    private void setQueueAttributes(String queueUrl, Duration visibilityTimeout, Configuration configuration, SqsRedrivePolicy redrivePolicy, String kmsMasterKeyId) {
         String redrivePolicyValue = redrivePolicy != SqsRedrivePolicy.NONE
                 ? jsonSerializer.toJson(redrivePolicy)
                 : "";
@@ -217,7 +212,8 @@ public final class SqsCourierMessageBinRegistry {
                 .addAttributesEntry(QueueAttributeName.MessageRetentionPeriod.toString(), String.valueOf(configuration.getInt("messageRetentionPeriod", DEFAULT_MESSAGE_RETENTION_PERIOD)))
                 .addAttributesEntry(QueueAttributeName.ReceiveMessageWaitTimeSeconds.toString(), String.valueOf(configuration.getInt("receiveMessageWaitTimeSeconds", DEFAULT_RECEIVE_MESSAGE_WAIT_TIME_SECONDS)))
                 .addAttributesEntry(QueueAttributeName.VisibilityTimeout.toString(), String.valueOf(configuration.getLong("visibilityTimeout", visibilityTimeout.getSeconds())))
-                .addAttributesEntry(QueueAttributeName.RedrivePolicy.toString(), redrivePolicyValue);
+                .addAttributesEntry(QueueAttributeName.RedrivePolicy.toString(), redrivePolicyValue)
+                .addAttributesEntry(QueueAttributeName.KmsMasterKeyId.toString(), kmsMasterKeyId);
 
         client.setQueueAttributes(attributesRequest);
     }
@@ -270,6 +266,7 @@ public final class SqsCourierMessageBinRegistry {
         private final JsonSerializer jsonSerializer;
 
         private String queueNameDiscriminator = null;
+        private String kmsMasterKeyId = "";
         private boolean allowProvisioning = false;
         private MessageBin trashBin = null;
 
@@ -286,6 +283,13 @@ public final class SqsCourierMessageBinRegistry {
          */
         public Builder withQueueNameDiscriminator(String queueNameDiscriminator) {
             this.queueNameDiscriminator = queueNameDiscriminator;
+            return this;
+        }
+
+        public Builder withKmsMasterKeyId(String kmsMasterKeyId) {
+            this.kmsMasterKeyId = kmsMasterKeyId != null
+                    ? kmsMasterKeyId
+                    : "";
             return this;
         }
 
@@ -318,7 +322,7 @@ public final class SqsCourierMessageBinRegistry {
          * @return a new {@link SqsCourierMessageBinRegistry} instance
          */
         public SqsCourierMessageBinRegistry build() {
-            return new SqsCourierMessageBinRegistry(client, jsonSerializer, queueNameDiscriminator, allowProvisioning, trashBin);
+            return new SqsCourierMessageBinRegistry(client, jsonSerializer, queueNameDiscriminator, kmsMasterKeyId, allowProvisioning, trashBin);
         }
     }
 }
