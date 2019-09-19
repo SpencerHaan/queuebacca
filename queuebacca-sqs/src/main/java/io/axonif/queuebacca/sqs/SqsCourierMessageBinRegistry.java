@@ -61,16 +61,6 @@ public final class SqsCourierMessageBinRegistry {
     private static final String SQS_QUEUE_PROCESSING = "processing";
     private static final String SQS_QUEUE_RECYCLING = "recycling";
 
-    /**
-     * @deprecated This shouldn't have been brought over from Axonify's source code
-     */
-    public static final String SQS_QUEUE_DISCRIMINATOR = SQS_QUEUE_PREFIX + ".discriminator";
-
-    /**
-     * @deprecated This shouldn't have been brought over from Axonify's source code
-     */
-    public static final String SQS_QUEUE_ALLOW_PROVISIONING = SQS_QUEUE_PREFIX + ".allowProvisioning";
-
     private static final int DEFAULT_RETRIES = 15;
     private static final int DEFAULT_RETRIES_RECYCLING = 15;
     private static final int DEFAULT_DELAY_SECONDS = 0;
