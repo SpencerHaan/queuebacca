@@ -19,16 +19,12 @@ package io.axonif.queuebacca.sqs;
 import java.io.IOException;
 import java.util.Objects;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.axonif.queuebacca.exceptions.QueuebaccaException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.base.Stopwatch;
+import io.axonif.queuebacca.util.MessageSerializer;
 
-public class JacksonSerializer implements JsonSerializer {
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(JacksonSerializer.class);
+public class JacksonSerializer implements MessageSerializer {
 
     private final ObjectMapper mapper;
 
@@ -37,33 +33,21 @@ public class JacksonSerializer implements JsonSerializer {
     }
 
     @Override
-    public <T> String toJson(T object) {
+    public <T> String toString(T object) {
         if (object == null) throw new QueuebaccaException("Target cannot be null");
         try {
-            Stopwatch stopwatch = Stopwatch.createStarted();
-            String value = mapper.writeValueAsString(object);
-            stopwatch.stop();
-            LOGGER.debug("Jackson 'to' took {} for {}", stopwatch, object.getClass());
-
-            return value;
+            return mapper.writeValueAsString(object);
         } catch (IOException e) {
             throw new QueuebaccaException("Failed to map to " + object + " to string", e);
         }
     }
 
     @Override
-    public <T> T fromJson(String json, Class<T> clazz) {
+    public <T> T fromString(String json, Class<T> clazz) {
         if (json == null) throw new QueuebaccaException("String cannot be null");
         if (clazz == null) throw new QueuebaccaException("Class type cannot be null");
         try {
-            Stopwatch stopwatch = Stopwatch.createStarted();
-
-            T value = mapper.readerFor(clazz).readValue(json);
-
-            stopwatch.stop();
-            LOGGER.debug("Jackson 'from' took {} for {}", stopwatch, clazz);
-
-            return value;
+            return mapper.readerFor(clazz).readValue(json);
         } catch (IOException e) {
             throw new QueuebaccaException("Failed to map from " + json + " to " + clazz.getName(), e);
         }

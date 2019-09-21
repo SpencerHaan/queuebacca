@@ -37,6 +37,7 @@ import com.amazonaws.services.sqs.model.SendMessageBatchRequestEntry;
 import com.amazonaws.services.sqs.model.SendMessageBatchResult;
 import com.amazonaws.services.sqs.model.SendMessageRequest;
 import com.amazonaws.services.sqs.model.SendMessageResult;
+
 import io.axonif.queuebacca.Message;
 import io.axonif.queuebacca.OutgoingEnvelope;
 import io.axonif.queuebacca.util.MessageSerializer;
