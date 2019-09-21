@@ -71,16 +71,14 @@ public final class SqsCourierMessageBinRegistry {
 
     private final Map<String, CourierProfile> courierProfiles = new ConcurrentHashMap<>();
     private final AmazonSQS client;
-    private final JsonSerializer jsonSerializer;
     private final String queueNameDiscriminator;
     private final String kmsMasterKeyId;
     private final boolean allowProvisioning;
 
     private final String trashQueueUrl;
 
-    private SqsCourierMessageBinRegistry(AmazonSQS client, JsonSerializer jsonSerializer, String queueNameDiscriminator, String kmsMasterKeyId, boolean allowProvisioning, MessageBin trashBin) {
+    private SqsCourierMessageBinRegistry(AmazonSQS client, String queueNameDiscriminator, String kmsMasterKeyId, boolean allowProvisioning, MessageBin trashBin) {
         this.client = client;
-        this.jsonSerializer = jsonSerializer;
         this.queueNameDiscriminator = queueNameDiscriminator;
         this.kmsMasterKeyId = kmsMasterKeyId;
         this.allowProvisioning = allowProvisioning;
@@ -98,11 +96,10 @@ public final class SqsCourierMessageBinRegistry {
      * A builder for constructing a {@link SqsCourierMessageBinRegistry}.
      *
      * @param client a required AWS SQS client
-     * @param jsonSerializer a required JSON serializer for SQS queue configuration
      * @return a {@link Builder}
      */
-    public static Builder builder(AmazonSQS client, JsonSerializer jsonSerializer) {
-        return new Builder(client, jsonSerializer);
+    public static Builder builder(AmazonSQS client) {
+        return new Builder(client);
     }
 
     /**
@@ -203,7 +200,7 @@ public final class SqsCourierMessageBinRegistry {
 
     private void setQueueAttributes(String queueUrl, Duration visibilityTimeout, Configuration configuration, SqsRedrivePolicy redrivePolicy, String kmsMasterKeyId) {
         String redrivePolicyValue = redrivePolicy != SqsRedrivePolicy.NONE
-                ? jsonSerializer.toJson(redrivePolicy)
+                ? createRedrivePolicyBody(redrivePolicy)
                 : "";
         SetQueueAttributesRequest attributesRequest = new SetQueueAttributesRequest()
                 .withQueueUrl(queueUrl)
@@ -216,6 +213,13 @@ public final class SqsCourierMessageBinRegistry {
                 .addAttributesEntry(QueueAttributeName.KmsMasterKeyId.toString(), kmsMasterKeyId);
 
         client.setQueueAttributes(attributesRequest);
+    }
+
+    private String createRedrivePolicyBody(SqsRedrivePolicy redrivePolicy) {
+        return "{"
+                + "\"maxReceiveCount\":\"" + redrivePolicy.getMaxReceiveCount() + "\", "
+                + "\"deadLetterTargetArn\":\"" + redrivePolicy.getDeadLetterTargetArn() + "\""
+                + "}";
     }
 
     private void setTags(String queueUrl, Collection<SqsTag> tags, Configuration configuration) {
@@ -263,16 +267,14 @@ public final class SqsCourierMessageBinRegistry {
     public static class Builder {
 
         private final AmazonSQS client;
-        private final JsonSerializer jsonSerializer;
 
         private String queueNameDiscriminator = null;
         private String kmsMasterKeyId = "";
         private boolean allowProvisioning = false;
         private MessageBin trashBin = null;
 
-        private Builder(AmazonSQS client, JsonSerializer serializer) {
+        private Builder(AmazonSQS client) {
             this.client = requireNonNull(client);
-            this.jsonSerializer = requireNonNull(serializer);
         }
 
         /**
@@ -322,7 +324,7 @@ public final class SqsCourierMessageBinRegistry {
          * @return a new {@link SqsCourierMessageBinRegistry} instance
          */
         public SqsCourierMessageBinRegistry build() {
-            return new SqsCourierMessageBinRegistry(client, jsonSerializer, queueNameDiscriminator, kmsMasterKeyId, allowProvisioning, trashBin);
+            return new SqsCourierMessageBinRegistry(client, queueNameDiscriminator, kmsMasterKeyId, allowProvisioning, trashBin);
         }
     }
 }
