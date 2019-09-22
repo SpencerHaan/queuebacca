@@ -25,18 +25,18 @@ import java.util.function.Function;
 /**
  * A consumer of {@link Message Messages}.
  *
- * @param <M> the message type
+ * @param <Message> the message type
  */
-public interface MessageConsumer<M extends Message> {
+public interface MessageConsumer<Message> {
 
 	/**
 	 * A convenience wrapper for a {@link MessageConsumer} that by default will always respond with {@link MessageResponse#CONSUMED}.
 	 *
 	 * @param consumer a simple {@link BiConsumer} that will provide the {@link Message} and {@link MessageContext} but doesn't require a {@link MessageResponse}
-	 * @param <M> the message type
+	 * @param <Message> the message type
 	 * @return the {@link BiConsumer} parameter wrapped as a {@link MessageConsumer}
 	 */
-	static <M extends Message> MessageConsumer<M> responseless(BiConsumer<M, MessageContext> consumer) {
+	static <Message> MessageConsumer<Message> responseless(BiConsumer<Message, MessageContext> consumer) {
 		requireNonNull(consumer);
 		return (message, context) -> {
 			consumer.accept(message, context);
@@ -49,10 +49,10 @@ public interface MessageConsumer<M extends Message> {
 	 * parameter.
 	 *
 	 * @param function a simple {@link Function} that will provide the {@link Message} and return a {@link MessageResponse}
-	 * @param <M> the message type
+	 * @param <Message> the message type
 	 * @return the {@link Function} parameter wrapped as a {@link MessageConsumer}
 	 */
-	static <M extends Message> MessageConsumer<M> contextless(Function<M, MessageResponse> function) {
+	static <Message> MessageConsumer<Message> contextless(Function<Message, MessageResponse> function) {
 		requireNonNull(function);
 		return (message, context) -> function.apply(message);
 	}
@@ -62,10 +62,10 @@ public interface MessageConsumer<M extends Message> {
 	 * {@link MessageContext} parameter.
 	 *
 	 * @param consumer a simple {@link Consumer} that will provide the {@link Message} but doesn't provide a {@link MessageContext} and doesn't require a {@link MessageResponse}
-	 * @param <M> the message type
+	 * @param <Message> the message type
 	 * @return the {@link Consumer} parameter wrapped as a {@link MessageConsumer}
 	 */
-	static <M extends Message> MessageConsumer<M> basic(Consumer<M> consumer) {
+	static <Message> MessageConsumer<Message> basic(Consumer<Message> consumer) {
 		requireNonNull(consumer);
 		return (message, context) -> {
 			consumer.accept(message);
@@ -74,11 +74,11 @@ public interface MessageConsumer<M extends Message> {
 	}
 
 	/**
-	 * Consumes the {@link M message}. A {@link MessageContext} is provided to include additional information about the
+	 * Consumes the {@link Message}. A {@link MessageContext} is provided to include additional information about the
 	 * {@link Message}.
 	 *  @param message the message being consumed
 	 * @param messageContext the context
      * @return a {@link MessageResponse} indicating how to handle the {@link Message} after it's been consumed
      */
-	MessageResponse consume(M message, MessageContext messageContext);
+	MessageResponse consume(Message message, MessageContext messageContext);
 }

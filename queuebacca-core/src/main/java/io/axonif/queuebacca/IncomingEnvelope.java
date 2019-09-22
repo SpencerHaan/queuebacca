@@ -21,36 +21,31 @@ import static java.util.Objects.requireNonNull;
 import java.time.Instant;
 
 /**
- * A container for an incoming {@link M message}.
- *
- * @param <M> the message type
+ * A container for an incoming message.
  */
-public final class IncomingEnvelope<M extends Message> {
+public final class IncomingEnvelope {
 
     private final String messageId;
     private final String receipt;
     private final int readCount;
     private final Instant firstReceived;
-    private final M message;
-    private final String rawMessage;
+    private final String messageBody;
 
     /**
-     * Creates a new instance of a {@link IncomingEnvelope} with a {@link M message}, it's unique id, a receipt for
+     * Creates a new instance of a {@link IncomingEnvelope} with a message, it's unique id, a receipt for
      * it's retrieval, and it's current read count.
      * @param messageId the message id
      * @param receipt a receipt unique to this envelope
      * @param readCount the number of times the message has been read
      * @param firstReceived the first time the message was received as an {@link Instant}
-     * @param message the message
-     * @param rawMessage the message before being de-serialized
+     * @param messageBody the message
      */
-    public IncomingEnvelope(String messageId, String receipt, int readCount, Instant firstReceived, M message, String rawMessage) {
+    public IncomingEnvelope(String messageId, String receipt, int readCount, Instant firstReceived, String messageBody) {
         this.messageId = requireNonNull(messageId);
         this.receipt = requireNonNull(receipt);
-        this.readCount = readCount; // SPENCER protect against negatives
+        this.readCount = readCount;
         this.firstReceived = requireNonNull(firstReceived);
-        this.message = requireNonNull(message);
-        this.rawMessage = requireNonNull(rawMessage);
+        this.messageBody = requireNonNull(messageBody);
     }
 
     /**
@@ -85,15 +80,11 @@ public final class IncomingEnvelope<M extends Message> {
     }
 
     /**
-     * Gets the {@link M message}.
+     * Gets the body of the message.
      *
-     * @return the message
+     * @return the message body
      */
-    public M getMessage() {
-        return message;
-    }
-
-    public String getRawMessage() {
-        return rawMessage;
+    public String getMessageBody() {
+        return messageBody;
     }
 }

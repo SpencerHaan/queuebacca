@@ -24,7 +24,6 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
-import io.axonif.queuebacca.Message;
 import io.axonif.queuebacca.MessageBin;
 import io.axonif.queuebacca.MessageConsumer;
 import io.axonif.queuebacca.MessageContext;
@@ -34,22 +33,20 @@ import io.axonif.queuebacca.exceptions.QueuebaccaConfigurationException;
 /**
  * A {@link MessageConsumer} used to route a {@link Message} to a another, registered {@link MessageConsumer}.
  * This allows multiple message types to be published and subscribed for a single {@link MessageBin}.
- *
- * @param <M> the message type
  */
-public final class RoutingMessageConsumer<M extends Message> implements MessageConsumer<M> {
+public final class RoutingMessageConsumer<Message> implements MessageConsumer<Message> {
 
     private final Map<Class<?>, Class<?>> routingMap = new ConcurrentHashMap<>();
-    private final Map<Class<?>, MessageConsumer<? extends M>> consumers;
+    private final Map<Class<?>, MessageConsumer<? extends Message>> consumers;
 
-    private RoutingMessageConsumer(Map<Class<?>, MessageConsumer<? extends M>> consumers) {
+    private RoutingMessageConsumer(Map<Class<?>, MessageConsumer<? extends Message>> consumers) {
         this.consumers = new HashMap<>(requireNonNull(consumers));
     }
 
     /**
      * Creates a new {@link RoutingMessageConsumer.Builder}.
      */
-    public static <M extends Message> Builder<M> builder() {
+    public static <Message> Builder<Message> builder() {
         return new Builder<>();
     }
 
@@ -62,20 +59,20 @@ public final class RoutingMessageConsumer<M extends Message> implements MessageC
      * @return a {@link MessageResponse} indicating how to handle the {@link Message} after it's been consumed
      */
     @Override
-    public MessageResponse consume(M message, MessageContext messageContext) {
+    public MessageResponse consume(Message message, MessageContext messageContext) {
         requireNonNull(message);
         requireNonNull(messageContext);
 
-        MessageConsumer<M> consumer = findConsumer(message.getClass())
+        MessageConsumer<Message> consumer = findConsumer(message.getClass())
                 .orElseThrow(() -> new QueuebaccaConfigurationException("No consumer available for message '" +  message.getClass().getName() + "'"));
         return consumer.consume(message, messageContext);
     }
 
     @SuppressWarnings("unchecked")
-    private Optional<MessageConsumer<M>> findConsumer(Class<?> messageType) {
+    private Optional<MessageConsumer<Message>> findConsumer(Class<?> messageType) {
         Class<?> mappedMessageType = routingMap.computeIfAbsent(messageType, this::mapMessageType);
         return Optional.ofNullable(mappedMessageType)
-                .map(mt -> (MessageConsumer<M>) consumers.get(mt));
+                .map(mt -> (MessageConsumer<Message>) consumers.get(mt));
     }
 
     private Class<?> mapMessageType(Class<?> messageType) {
@@ -94,11 +91,11 @@ public final class RoutingMessageConsumer<M extends Message> implements MessageC
     /**
      * A builder for {@link RoutingMessageConsumer RoutingMessageConsumers}.
      *
-     * @param <M> the message type
+     * @param <Message> the message type
      */
-    public static class Builder<M extends Message> {
+    public static class Builder<Message> {
 
-        private final Map<Class<?>, MessageConsumer<? extends M>> consumers = new HashMap<>();
+        private final Map<Class<?>, MessageConsumer<? extends Message>> consumers = new HashMap<>();
 
         private Builder() {}
 
@@ -111,7 +108,7 @@ public final class RoutingMessageConsumer<M extends Message> implements MessageC
          * @return this object for method chaining
          * @throws QueuebaccaConfigurationException if a consumer has already been registered for a given message type
          */
-        public <T extends M> Builder<M> registerMessageRoute(Class<T> messageType, MessageConsumer<T> consumer) {
+        public <T extends Message> Builder<Message> registerMessageRoute(Class<T> messageType, MessageConsumer<T> consumer) {
             requireNonNull(messageType);
             requireNonNull(consumer);
 
@@ -129,7 +126,7 @@ public final class RoutingMessageConsumer<M extends Message> implements MessageC
          *
          * @return the subscription configuration
          */
-        public RoutingMessageConsumer<M> build() {
+        public RoutingMessageConsumer<Message> build() {
             return new RoutingMessageConsumer<>(consumers);
         }
     }

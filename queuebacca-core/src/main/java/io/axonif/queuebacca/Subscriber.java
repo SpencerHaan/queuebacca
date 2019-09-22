@@ -30,8 +30,8 @@ import io.axonif.queuebacca.events.TimingEventListener;
 import io.axonif.queuebacca.events.TimingEventSupport;
 
 /**
- * Subscribes to {@link MessageBin MessageBins} for the purposes of consuming {@link Message ViaMessages}. Maintains
- * a list of active subscriptions for the purposes of cancelling them.
+ * Subscribes to {@link MessageBin MessageBins} for the purposes of consuming messages. Maintains a list of active subscriptions for the purposes of
+ * cancelling them.
  */
 public final class Subscriber {
 
@@ -61,7 +61,7 @@ public final class Subscriber {
 	 *
 	 * @param configuration subscription configuration
 	 */
-	public void subscribe(SubscriptionConfiguration<?> configuration) {
+	public <Message> void subscribe(SubscriptionConfiguration<Message> configuration) {
         requireNonNull(configuration);
 
         ThreadFactory threadFactory = new ThreadFactoryBuilder()
@@ -69,7 +69,7 @@ public final class Subscriber {
                 .build();
         WorkExecutor workExecutor = workExecutorFactory.newWorkExecutor(configuration.getMessageCapacity(), threadFactory);
 
-        ActiveSubscription<?> subscription = ActiveSubscription.start(configuration, client, workExecutor, exceptionResolver, timingEventSupport);
+        ActiveSubscription<Message> subscription = ActiveSubscription.start(configuration, client, workExecutor, exceptionResolver, timingEventSupport);
         activeSubscriptions.add(subscription);
     }
 
@@ -88,48 +88,47 @@ public final class Subscriber {
 		timingEventSupport.removeListener(timingEventListener);
 	}
 
-    interface SubscriptionHarness<M extends Message> {
+    interface SubscriptionHarness<Message> {
 
-		void handle(IncomingEnvelope<M> envelope, BiConsumer<IncomingEnvelope<M>, MessageConsumer<M>> envelopeConsumer);
+		void handle(IncomingEnvelope envelope, BiConsumer<IncomingEnvelope, MessageConsumer<Message>> envelopeConsumer);
 	}
 
-	static class DefaultSubscriptionHarness<M extends Message> implements SubscriptionHarness<M> {
+	static class DefaultSubscriptionHarness<Message> implements SubscriptionHarness<Message> {
 
-		private final MessageConsumer<M> messageConsumer;
+		private final MessageConsumer<Message> messageConsumer;
 
-		DefaultSubscriptionHarness(MessageConsumer<M> messageConsumer) {
+		DefaultSubscriptionHarness(MessageConsumer<Message> messageConsumer) {
 			this.messageConsumer = messageConsumer;
 		}
 
 		@Override
-		public void handle(IncomingEnvelope<M> envelope, BiConsumer<IncomingEnvelope<M>, MessageConsumer<M>> envelopeConsumer) {
+		public void handle(IncomingEnvelope envelope, BiConsumer<IncomingEnvelope, MessageConsumer<Message>> envelopeConsumer) {
 			envelopeConsumer.accept(envelope, messageConsumer);
 		}
 	}
 
-	static class FallbackSubscriptionHarness<M extends Message> implements SubscriptionHarness<M> {
+	static class FallbackSubscriptionHarness<Message> implements SubscriptionHarness<Message> {
 
-		private final NavigableMap<Integer, MessageConsumer<? extends M>> consumers;
+		private final NavigableMap<Integer, MessageConsumer<? extends Message>> consumers;
 
-		FallbackSubscriptionHarness(NavigableMap<Integer, MessageConsumer<? extends M>> consumers) {
+		FallbackSubscriptionHarness(NavigableMap<Integer, MessageConsumer<? extends Message>> consumers) {
 			this.consumers = consumers;
 		}
 
 		@SuppressWarnings("unchecked")
 		@Override
-		public void handle(IncomingEnvelope<M> envelope, BiConsumer<IncomingEnvelope<M>, MessageConsumer<M>> envelopeConsumer) {
+		public void handle(IncomingEnvelope envelope, BiConsumer<IncomingEnvelope, MessageConsumer<Message>> envelopeConsumer) {
 			int expectedTotalRead = consumers.subMap(0, envelope.getReadCount()).keySet().stream()
 					.mapToInt(v -> v)
 					.sum();
-			MessageConsumer<M> consumer = (MessageConsumer<M>) consumers.floorEntry(envelope.getReadCount()).getValue();
+			MessageConsumer<Message> consumer = (MessageConsumer<Message>) consumers.floorEntry(envelope.getReadCount()).getValue();
 
-			IncomingEnvelope<M> incomingEnvelope = new IncomingEnvelope<>(
+			IncomingEnvelope incomingEnvelope = new IncomingEnvelope(
 					envelope.getMessageId(),
 					envelope.getReceipt(),
 					envelope.getReadCount() - expectedTotalRead,
 					envelope.getFirstReceived(),
-					envelope.getMessage(),
-					envelope.getRawMessage()
+					envelope.getMessageBody()
 			);
 			envelopeConsumer.accept(incomingEnvelope, consumer);
 		}

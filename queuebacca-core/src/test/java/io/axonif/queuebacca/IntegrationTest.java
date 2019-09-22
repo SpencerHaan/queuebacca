@@ -20,7 +20,9 @@ import static org.junit.Assert.assertEquals;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -28,6 +30,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.Test;
 
+import io.axonif.queuebacca.publishing.Publisher;
+import io.axonif.queuebacca.publishing.Publishing;
 import io.axonif.queuebacca.retries.ConstantRetryDelay;
 
 public class IntegrationTest {
@@ -36,12 +40,17 @@ public class IntegrationTest {
 
 	@Test
 	public void subscribe() throws InterruptedException {
+		TestMessageSerializer testMessageSerializer = new TestMessageSerializer();
+
 		MessageBin messageBin = new MessageBin("test");
-		TestClient Client = new TestClient();
-		Subscriber subscriber = new Subscriber(Client, ThreadPoolWorkExecutor::newPooledWorkExecutor, exceptionResolver);
+		TestClient client = new TestClient();
+		Subscriber subscriber = Subscribing.subscriber(client)
+				.withMessageSerializer(testMessageSerializer)
+				.withExceptionResolver(exceptionResolver)
+				.build();
 
 		MessageConsumer<TestMessage> consumer = MessageConsumer.basic(TestMessage::markComplete);
-		SubscriptionConfiguration<TestMessage> configuration = SubscriptionConfiguration.builder(messageBin, consumer)
+		SubscriptionConfiguration<TestMessage> configuration = SubscriptionConfiguration.builder(messageBin, TestMessage.class, consumer)
 				// Note: This test runs very fast and can cause ThreadPoolExecutor to hit a race condition and throw
 				// RejectedExecutionException if the threadpool size is too small. This has not been an issue in prod
 				// because there are natural delays (SQS, database access). To stabilize the test, we set the capacity
@@ -51,14 +60,16 @@ public class IntegrationTest {
 				.build();
 		subscriber.subscribe(configuration);
 
-		Publisher publisher = new Publisher(Client, messageBin);
+		Publisher publisher = Publishing.publisher(client)
+				.withMessageSerializer(testMessageSerializer)
+				.build();
 
 		CountDownLatch countDownLatch = new CountDownLatch(10);
 		Collection<TestMessage> messages = new ArrayList<>();
 		for (int i = 0; i < 10; i++) {
 			messages.add(new TestMessage(countDownLatch::countDown));
 		}
-		publisher.publish(messages);
+		publisher.publish(messageBin, messages);
 
 		// If a message doesn't finish, this will timeout
 		countDownLatch.await(10, TimeUnit.SECONDS);
@@ -68,12 +79,17 @@ public class IntegrationTest {
 
 	@Test
 	public void subscribe_FailedMessage() throws InterruptedException {
+		TestMessageSerializer testMessageSerializer = new TestMessageSerializer();
+
 		MessageBin messageBin = new MessageBin("test");
-		TestClient Client = new TestClient();
-		Subscriber subscriber = new Subscriber(Client, ThreadPoolWorkExecutor::newPooledWorkExecutor, exceptionResolver);
+		TestClient client = new TestClient();
+		Subscriber subscriber = Subscribing.subscriber(client)
+				.withExceptionResolver(exceptionResolver)
+				.withMessageSerializer(testMessageSerializer)
+				.build();
 
 		MessageConsumer<TestMessage> consumer = MessageConsumer.basic(TestMessage::markComplete);
-		SubscriptionConfiguration<TestMessage> configuration = SubscriptionConfiguration.builder(messageBin, consumer)
+		SubscriptionConfiguration<TestMessage> configuration = SubscriptionConfiguration.builder(messageBin, TestMessage.class, consumer)
 				// Note: This test runs very fast and can cause ThreadPoolExecutor to hit a race condition and throw
 				// RejectedExecutionException if the threadpool size is too small. This has not been an issue in prod
 				// because there are natural delays (SQS, database access). To stabilize the test, we set the capacity
@@ -84,7 +100,9 @@ public class IntegrationTest {
 				.build();
 		subscriber.subscribe(configuration);
 
-		Publisher publisher = new Publisher(Client, messageBin);
+		Publisher publisher = Publishing.publisher(client)
+				.withMessageSerializer(testMessageSerializer)
+				.build();
 
 		CountDownLatch countDownLatch = new CountDownLatch(10);
 		Map<TestMessage, AtomicInteger> messageCounters = new ConcurrentHashMap<>();
@@ -98,7 +116,7 @@ public class IntegrationTest {
 			};
 			messageCounters.put(new TestMessage(runnable), counter);
 		}
-		publisher.publish(messageCounters.keySet());
+		publisher.publish(messageBin, messageCounters.keySet());
 
 		// If a message doesn't finish, this will timeout
 		countDownLatch.await(10, TimeUnit.SECONDS);
@@ -110,7 +128,7 @@ public class IntegrationTest {
 		}
 	}
 
-	private class TestMessage implements Message {
+	private static class TestMessage {
 
 		private final Runnable onComplete;
 
@@ -120,6 +138,24 @@ public class IntegrationTest {
 
 		void markComplete() {
 			onComplete.run();
+		}
+	}
+
+	private static class TestMessageSerializer implements MessageSerializer {
+
+		private Map<String, Object> serializationMap = new HashMap<>();
+
+		@Override
+		public <Message> String toString(Message message, Class<? extends Message> messageType) {
+			String uuid = UUID.randomUUID().toString();
+			serializationMap.put(uuid, message);
+			return uuid;
+		}
+
+		@Override
+		@SuppressWarnings("unchecked")
+		public <Message> Message fromString(String body, Class<? extends Message> messageType) {
+			return (Message) serializationMap.get(body);
 		}
 	}
 }

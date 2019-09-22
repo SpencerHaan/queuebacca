@@ -27,7 +27,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.junit.Test;
 
-import io.axonif.queuebacca.Message;
 import io.axonif.queuebacca.MessageConsumer;
 import io.axonif.queuebacca.MessageContext;
 import io.axonif.queuebacca.MessageResponse;
@@ -36,13 +35,13 @@ public class ScopedMessageConsumerTest {
 
 	@Test(expected = NullPointerException.class)
 	public void consume_nullMessage() {
-		ScopedMessageConsumer<Message> messageConsumer = new ScopedMessageConsumer<>(MessageConsumer.basic(message -> {}), new TestMessageScope());
+		ScopedMessageConsumer<TestMessage> messageConsumer = new ScopedMessageConsumer<>(MessageConsumer.basic(message -> {}), new TestMessageScope());
 		messageConsumer.consume(null, new MessageContext("", 0, Instant.now(), "rawMessage"));
 	}
 
 	@Test(expected = NullPointerException.class)
 	public void consume_nullContext() {
-		ScopedMessageConsumer<Message> messageConsumer = new ScopedMessageConsumer<>(MessageConsumer.basic(message -> {}), new TestMessageScope());
+		ScopedMessageConsumer<TestMessage> messageConsumer = new ScopedMessageConsumer<>(MessageConsumer.basic(message -> {}), new TestMessageScope());
 		messageConsumer.consume(new TestMessage(), null);
 	}
 
@@ -52,9 +51,9 @@ public class ScopedMessageConsumerTest {
 
 		AtomicBoolean called = new AtomicBoolean(false);
 		TestMessageScope testMessageScope = new TestMessageScope();
-		MessageConsumer<Message> innerConsumer = MessageConsumer.basic(message -> called.set(true));
+		MessageConsumer<TestMessage> innerConsumer = MessageConsumer.basic(message -> called.set(true));
 
-		ScopedMessageConsumer<Message> messageConsumer = new ScopedMessageConsumer<>(innerConsumer, testMessageScope);
+		ScopedMessageConsumer<TestMessage> messageConsumer = new ScopedMessageConsumer<>(innerConsumer, testMessageScope);
 		messageConsumer.consume(new TestMessage(), new MessageContext(expectedId, 0, Instant.now(), "rawMessage"));
 
 		assertTrue(called.get());
@@ -67,9 +66,9 @@ public class ScopedMessageConsumerTest {
 
 		AtomicBoolean called = new AtomicBoolean(false);
 		BrokenChainMessageScope testMessageScope = new BrokenChainMessageScope();
-		MessageConsumer<Message> innerConsumer = MessageConsumer.basic(message -> called.set(true));
+		MessageConsumer<TestMessage> innerConsumer = MessageConsumer.basic(message -> called.set(true));
 
-		ScopedMessageConsumer<Message> messageConsumer = new ScopedMessageConsumer<>(innerConsumer, testMessageScope);
+		ScopedMessageConsumer<TestMessage> messageConsumer = new ScopedMessageConsumer<>(innerConsumer, testMessageScope);
 		messageConsumer.consume(new TestMessage(), new MessageContext(expectedId, 0, Instant.now(), "rawMessage"));
 
 		assertFalse(called.get());
@@ -78,13 +77,14 @@ public class ScopedMessageConsumerTest {
 
 	@Test(expected = RuntimeException.class)
 	public void consume_exceptionPassesThrough() {
-		ScopedMessageConsumer<Message> messageConsumer = new ScopedMessageConsumer<>((message, context) -> {
+		ScopedMessageConsumer<TestMessage> messageConsumer = new ScopedMessageConsumer<>((message, context) -> {
 			throw new RuntimeException();
 		}, new TestMessageScope());
 		messageConsumer.consume(new TestMessage(), new MessageContext("", 0, Instant.now(), "rawMessage"));
 	}
 
-	private static class TestMessage implements Message { }
+
+	private static class TestMessage { }
 
 	private static class TestMessageScope implements MessageScope {
 

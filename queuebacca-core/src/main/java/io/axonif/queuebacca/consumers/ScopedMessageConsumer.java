@@ -25,36 +25,32 @@ import java.util.List;
 import java.util.Queue;
 import java.util.stream.Collectors;
 
-import io.axonif.queuebacca.Message;
 import io.axonif.queuebacca.MessageConsumer;
 import io.axonif.queuebacca.MessageContext;
 import io.axonif.queuebacca.MessageResponse;
 
 /**
- * A {@link MessageConsumer} that allows for additional, processing of {@link Message Messages} using a chain
- * of responsibility.
- *
- * @param <M> the message type
+ * A {@link MessageConsumer} that allows for additional, processing of messages using a chain of responsibility.
  */
-public final class 	ScopedMessageConsumer<M extends Message> implements MessageConsumer<M> {
+public final class 	ScopedMessageConsumer<Message> implements MessageConsumer<Message> {
 
 	/**
-	 * A processor to provide additional processing before or after a {@link Message} is consumed.
+	 * A processor to provide additional processing before or after a message is consumed.
 	 */
 	public interface MessageScope {
 
 		/**
-		 * Perform processing using the provided {@link M message} and {@link MessageContext}. In order to continue the chain,
-		 * a call to {@link MessageScopeChain#next()} is required. Failing to do so will result in
+		 * Perform processing using the provided {@link Message message} and {@link MessageContext}. In order to continue the chain, a call to
+		 * {@link MessageScopeChain#next()} is required. Failing to do so will result in
 		 * the message being disposed of and considered successfully consumed, which may be the desired result.
 		 *
-		 * @param <M> the message type
+		 * @param <Message> the message type
 		 * @param message the message being consumed
 		 * @param messageContext the context of the message
 		 * @param messageScopeChain the chain to continue processing to consumption
 		 * @return a {@link MessageResponse} indicating how to handle the {@link Message} after it's been consumed
 		 */
-		<M> MessageResponse wrap(M message, MessageContext messageContext, MessageScopeChain messageScopeChain);
+		<Message> MessageResponse wrap(Message message, MessageContext messageContext, MessageScopeChain messageScopeChain);
 	}
 
 	/**
@@ -68,7 +64,7 @@ public final class 	ScopedMessageConsumer<M extends Message> implements MessageC
 		MessageResponse next();
 	}
 
-	private final MessageConsumer<M> consumer;
+	private final MessageConsumer<Message> consumer;
 	private final List<MessageScope> messageScopes;
 
 	/**
@@ -79,7 +75,7 @@ public final class 	ScopedMessageConsumer<M extends Message> implements MessageC
 	 * @param messageScope the first processor
 	 * @param messageScopes any additional processors
 	 */
-	public ScopedMessageConsumer(MessageConsumer<M> consumer, MessageScope messageScope, MessageScope... messageScopes) {
+	public ScopedMessageConsumer(MessageConsumer<Message> consumer, MessageScope messageScope, MessageScope... messageScopes) {
 		requireNonNull(messageScope);
 		requireNonNull(messageScopes);
 
@@ -96,7 +92,7 @@ public final class 	ScopedMessageConsumer<M extends Message> implements MessageC
 	 * @return
 	 */
 	@Override
-	public MessageResponse consume(M message, MessageContext messageContext) {
+	public MessageResponse consume(Message message, MessageContext messageContext) {
 		requireNonNull(message);
 		requireNonNull(messageContext);
 
@@ -110,10 +106,10 @@ public final class 	ScopedMessageConsumer<M extends Message> implements MessageC
 	private final class ConcreteMessageScopeChain implements MessageScopeChain {
 
 		private final Queue<MessageScope> messageScopes;
-		private final M message;
+		private final Message message;
 		private final MessageContext messageContext;
 
-		ConcreteMessageScopeChain(Queue<MessageScope> messageScopes, M message, MessageContext messageContext) {
+		ConcreteMessageScopeChain(Queue<MessageScope> messageScopes, Message message, MessageContext messageContext) {
 			this.messageScopes = messageScopes;
 			this.message = message;
 			this.messageContext = messageContext;

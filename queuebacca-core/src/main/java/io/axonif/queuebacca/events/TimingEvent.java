@@ -23,7 +23,7 @@ import java.time.Instant;
 import io.axonif.queuebacca.MessageBin;
 
 /**
- * An event containing timing information for a specific {@link io.axonif.queuebacca.Message} from a {@link MessageBin}
+ * An event containing timing information for a specific message from a {@link MessageBin}
  */
 public class TimingEvent {
 

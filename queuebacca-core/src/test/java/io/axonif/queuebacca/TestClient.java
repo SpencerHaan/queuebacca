@@ -33,38 +33,37 @@ import java.util.stream.Collectors;
 
 public class TestClient implements Client {
 
-	private final Map<String, BlockingQueue<MessageWrapper<? extends Message>>> storedMessages = new ConcurrentHashMap<>();
+	private final Map<String, BlockingQueue<MessageWrapper>> storedMessages = new ConcurrentHashMap<>();
 
 	public int getMessageCount(MessageBin messageBin) {
 		return getQueue(messageBin).size();
 	}
 
-	public <M extends Message> boolean containsMessage(MessageBin messageBin, M message) {
-		return getQueue(messageBin).stream().anyMatch(w -> w.getMessage().equals(message));
+	public boolean containsMessage(MessageBin messageBin, String messageBody) {
+		return getQueue(messageBin).stream().anyMatch(w -> w.getMessageBody().equals(messageBody));
 	}
 
 	@Override
-	public <M extends Message> OutgoingEnvelope<M> sendMessage(MessageBin messageBin, M message, int delay) {
+	public OutgoingEnvelope sendMessage(MessageBin messageBin, String messageBody, int delay) {
 		Instant availableBy = Instant.now().plusSeconds(delay);
-		MessageWrapper<M> messageWrapper = new MessageWrapper<>(message, availableBy);
+		MessageWrapper messageWrapper = new MessageWrapper(messageBody, availableBy);
 		getQueue(messageBin).offer(messageWrapper);
-		return new OutgoingEnvelope<>(messageWrapper.getId(), messageWrapper.getMessage(), "rawMessage");
+		return new OutgoingEnvelope(messageWrapper.getId(), messageWrapper.getMessageBody());
 	}
 
 	@Override
-	public <M extends Message> Collection<OutgoingEnvelope<M>> sendMessages(MessageBin messageBin, Collection<M> messages, int delay) {
-		return messages.stream()
+	public Collection<OutgoingEnvelope> sendMessages(MessageBin messageBin, Collection<String> messageBodies, int delay) {
+		return messageBodies.stream()
 				.map(m -> sendMessage(messageBin, m, delay))
 				.collect(Collectors.toList());
 	}
 
-	@SuppressWarnings("unchecked")
 	@Override
-	public <M extends Message> Optional<IncomingEnvelope<M>> retrieveMessage(MessageBin messageBin) {
+	public Optional<IncomingEnvelope> retrieveMessage(MessageBin messageBin) {
 		try {
-			MessageWrapper<M> messageWrapper = (MessageWrapper<M>) getQueue(messageBin).poll(1, TimeUnit.SECONDS);
+			MessageWrapper messageWrapper = getQueue(messageBin).poll(1, TimeUnit.SECONDS);
 			return Optional.ofNullable(messageWrapper)
-					.map(w -> new IncomingEnvelope<>(w.getId(), "receipt", w.incrementCount(), Instant.now(), w.getMessage(), "not serialized"));
+					.map(w -> new IncomingEnvelope(w.getId(), "receipt", w.incrementCount(), Instant.now(), w.getMessageBody()));
 		} catch (InterruptedException e) {
 			return Optional.empty();
 		}
@@ -72,10 +71,10 @@ public class TestClient implements Client {
 
 
 	@Override
-	public <M extends Message> Collection<IncomingEnvelope<M>> retrieveMessages(MessageBin messageBin, int maxMessages) {
-		Collection<IncomingEnvelope<M>> envelopes = new ArrayList<>();
+	public Collection<IncomingEnvelope> retrieveMessages(MessageBin messageBin, int maxMessages) {
+		Collection<IncomingEnvelope> envelopes = new ArrayList<>();
 
-		Optional<IncomingEnvelope<M>> messageWrapper;
+		Optional<IncomingEnvelope> messageWrapper;
 		while (envelopes.size() < maxMessages && (messageWrapper = retrieveMessage(messageBin)).isPresent()) {
 			envelopes.add(messageWrapper.get());
 		}
@@ -83,48 +82,48 @@ public class TestClient implements Client {
 	}
 
 	@Override
-	public void returnMessage(MessageBin messageBin, IncomingEnvelope<?> incomingEnvelope, int delay) {
+	public void returnMessage(MessageBin messageBin, IncomingEnvelope incomingEnvelope, int delay) {
 		Instant availableBy = Instant.now().plusSeconds(delay);
-		MessageWrapper<?> messageWrapper = new MessageWrapper<Message>(incomingEnvelope.getMessageId(), incomingEnvelope.getMessage(), availableBy);
+		MessageWrapper messageWrapper = new MessageWrapper(incomingEnvelope.getMessageId(), incomingEnvelope.getMessageBody(), availableBy);
 		getQueue(messageBin).offer(messageWrapper);
 	}
 
 	@Override
-	public void disposeMessage(MessageBin messageBin, IncomingEnvelope<?> incomingEnvelope) {
+	public void disposeMessage(MessageBin messageBin, IncomingEnvelope incomingEnvelope) {
 		// Do nothing
 	}
 
-	private BlockingQueue<MessageWrapper<? extends Message>> getQueue(MessageBin messageBin) {
+	private BlockingQueue<MessageWrapper> getQueue(MessageBin messageBin) {
 		return storedMessages.computeIfAbsent(messageBin.getName(), s -> new PriorityBlockingQueue<>());
 	}
 
-	private static class MessageWrapper<M extends Message> implements Comparable<MessageWrapper<M>> {
+	private static class MessageWrapper implements Comparable<MessageWrapper> {
 
 		private final String id;
-		private final M message;
+		private final String messageBody;
 		private Instant availableBy;
 
 		private int readCount = 0;
 
-		public MessageWrapper(M message, Instant availableBy) {
-			this(UUID.randomUUID().toString(), message, availableBy);
+		MessageWrapper(String messageBody, Instant availableBy) {
+			this(UUID.randomUUID().toString(), messageBody, availableBy);
 		}
 
-		public MessageWrapper(String id, M message, Instant availableBy) {
+		MessageWrapper(String id, String messageBody, Instant availableBy) {
 			this.id = requireNonNull(id);
-			this.message = requireNonNull(message);
+			this.messageBody = requireNonNull(messageBody);
 			this.availableBy = requireNonNull(availableBy);
 		}
 
-		public String getId() {
+		String getId() {
 			return id;
 		}
 
-		public M getMessage() {
-			return message;
+		String getMessageBody() {
+			return messageBody;
 		}
 
-		public int incrementCount() {
+		int incrementCount() {
 			return ++readCount;
 		}
 
@@ -132,7 +131,7 @@ public class TestClient implements Client {
 		public boolean equals(Object o) {
 			if (this == o) return true;
 			if (!(o instanceof MessageWrapper)) return false;
-			MessageWrapper<?> that = (MessageWrapper<?>) o;
+			MessageWrapper that = (MessageWrapper) o;
 			return Objects.equals(id, that.id);
 		}
 
@@ -142,7 +141,7 @@ public class TestClient implements Client {
 		}
 
 		@Override
-		public int compareTo(MessageWrapper<M> o) {
+		public int compareTo(MessageWrapper o) {
 			return availableBy.compareTo(o.availableBy);
 		}
 	}

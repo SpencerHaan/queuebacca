@@ -14,11 +14,9 @@
  * limitations under the License.
  */
 
-package io.axonif.queuebacca.util;
+package io.axonif.queuebacca.publishing.events;
 
-public interface MessageSerializer {
+public interface PublishEventListener {
 
-	<M> String toString(M message);
-
-	<M> M fromString(String body, Class<M> messageClass);
+    void handleMessagePublishedEvent(MessagePublishedEvent event);
 }

@@ -38,35 +38,29 @@ import com.amazonaws.services.sqs.model.SendMessageBatchResult;
 import com.amazonaws.services.sqs.model.SendMessageRequest;
 import com.amazonaws.services.sqs.model.SendMessageResult;
 
-import io.axonif.queuebacca.Message;
 import io.axonif.queuebacca.OutgoingEnvelope;
-import io.axonif.queuebacca.util.MessageSerializer;
+import io.axonif.queuebacca.MessageSerializer;
 
 /**
  * Simplifies the batching of messages for SQS, ensuring batch sizes are not exceeded due to large individual
  * {@link M messages}.
- *
- * @param <M> the message type
  */
-final class SqsMessageBatchSender<M extends Message> {
+final class SqsMessageBatchSender {
 
     public static final int MAX_BATCH_ENTRY_COUNT = 10;
 
-    private final Collection<BatchEntry<M>> batchEntries = new ArrayList<>();
+    private final Collection<BatchEntry> batchEntries = new ArrayList<>();
 
     private final AmazonSQS client;
-    private final MessageSerializer serializer;
     private final Logger logger;
 
     /**
      * Creates a new instance of a {@link SqsMessageBatchSender} with the given {@link AmazonSQS client} and {@link MessageSerializer}.
      *
      * @param client the AWS SQS client
-     * @param serializer  a serializer for turning {@link M messages} into strings
      */
-    SqsMessageBatchSender(AmazonSQS client, MessageSerializer serializer, Logger logger) {
+    SqsMessageBatchSender(AmazonSQS client, Logger logger) {
         this.client = requireNonNull(client);
-        this.serializer = requireNonNull(serializer);
         this.logger = requireNonNull(logger);
     }
 
@@ -75,12 +69,10 @@ final class SqsMessageBatchSender<M extends Message> {
      *
      * @param message the message
      */
-    void add(M message) {
+    void add(String message) {
         requireNonNull(message);
 
-        String messageBody = serializer.toString(message);
-
-        BatchEntry<M> entry = new BatchEntry<>(message, messageBody);
+        BatchEntry entry = new BatchEntry(message, message);
         batchEntries.add(entry);
     }
 
@@ -91,7 +83,7 @@ final class SqsMessageBatchSender<M extends Message> {
      * @param delay a delay of 0 or greater
      * @return a collection of {@link OutgoingEnvelope OutgoingEnvelopes} containing information of the sent messages
      */
-    Collection<OutgoingEnvelope<M>> send(String queueUrl, int delay) {
+    Collection<OutgoingEnvelope> send(String queueUrl, int delay) {
         return StreamSupport.stream(partition(batchEntries, MAX_BATCH_ENTRY_COUNT).spliterator(), false)
                 .map(Batch::from)
                 .map(b -> sendBatch(b, queueUrl, delay))
@@ -99,14 +91,14 @@ final class SqsMessageBatchSender<M extends Message> {
                 .collect(Collectors.toList());
     }
 
-    private Collection<OutgoingEnvelope<M>> sendBatch(Batch<M> batch, String queueUrl, int delay) {
+    private Collection<OutgoingEnvelope> sendBatch(Batch batch, String queueUrl, int delay) {
         SendMessageBatchRequest batchRequest = batch.toBatchRequest(delay)
                 .withQueueUrl(queueUrl);
         SendMessageBatchResult batchResult = client.sendMessageBatch(batchRequest);
 
-        Collection<OutgoingEnvelope<M>> envelopes = batchResult.getSuccessful().stream()
+        Collection<OutgoingEnvelope> envelopes = batchResult.getSuccessful().stream()
                 .peek(s ->  logger.info("Sent SQS message '{}'", s.getMessageId()))
-                .map(s -> new OutgoingEnvelope<>(s.getMessageId(), batch.getMessage(s.getId()), batch.getMessageBody(s.getId())))
+                .map(s -> new OutgoingEnvelope(s.getMessageId(), batch.getMessage(s.getId())))
                 .collect(Collectors.toList());
 
         batchResult.getFailed().forEach(f -> {
@@ -118,7 +110,7 @@ final class SqsMessageBatchSender<M extends Message> {
                         SendMessageRequest retryMessageRequest = new SendMessageRequest(queueUrl, e.getMessageBody());
                         SendMessageResult result = client.sendMessage(retryMessageRequest);
                         logger.info("Sent SQS message '{}'", result.getMessageId());
-                        OutgoingEnvelope<M> envelope = new OutgoingEnvelope<>(result.getMessageId(), batch.getMessage(e.getId()), batch.getMessageBody(e.getId()));
+                        OutgoingEnvelope envelope = new OutgoingEnvelope(result.getMessageId(), batch.getMessage(e.getId()));
                         envelopes.add(envelope);
                     });
         });
@@ -128,24 +120,24 @@ final class SqsMessageBatchSender<M extends Message> {
     /**
      * Represents a single batch, containing up to 10 {@link BatchEntry BatchEntrys}.
      */
-    private static class Batch<M extends Message> {
+    private static class Batch {
 
-        private final Map<String, BatchEntry<M>> entries;
+        private final Map<String, BatchEntry> entries;
 
-        private Batch(Map<String, BatchEntry<M>> entries) {
+        private Batch(Map<String, BatchEntry> entries) {
             this.entries = requireNonNull(entries);
         }
 
-        public static <M extends Message> Batch<M> from(Collection<BatchEntry<M>> entries) {
+        public static Batch from(Collection<BatchEntry> entries) {
             String id = UUID.randomUUID().toString().replace("-", "");
 
             AtomicInteger idCounter = new AtomicInteger(1);
-            Map<String, BatchEntry<M>> mappedEntries = entries.stream()
+            Map<String, BatchEntry> mappedEntries = entries.stream()
                     .collect(Collectors.toMap(e -> id + "_" + idCounter.getAndIncrement(), Function.identity()));
-            return new Batch<>(mappedEntries);
+            return new Batch(mappedEntries);
         }
 
-        private M getMessage(String id) {
+        private String getMessage(String id) {
             return entries.get(id).getMessage();
         }
 
@@ -166,17 +158,17 @@ final class SqsMessageBatchSender<M extends Message> {
     /**
      * A single entry in a {@link Batch} to store the {@link M message} and it's serialized form.
      */
-    private static class BatchEntry<M extends Message> {
+    private static class BatchEntry {
 
-        private final M message;
+        private final String message;
         private final String messageBody;
 
-        private BatchEntry(M message, String messageBody) {
+        private BatchEntry(String message, String messageBody) {
             this.message = message;
             this.messageBody = messageBody;
         }
 
-        private M getMessage() {
+        private String getMessage() {
             return message;
         }
 

@@ -42,11 +42,10 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 
 import io.axonif.queuebacca.Client;
 import io.axonif.queuebacca.IncomingEnvelope;
-import io.axonif.queuebacca.Message;
 import io.axonif.queuebacca.MessageBin;
 import io.axonif.queuebacca.OutgoingEnvelope;
 import io.axonif.queuebacca.exceptions.QueuebaccaException;
-import io.axonif.queuebacca.util.MessageSerializer;
+import io.axonif.queuebacca.MessageSerializer;
 
 /**
  * An SQS implementation of {@link Client}.
@@ -71,7 +70,6 @@ public final class SqsClient implements Client {
 
     private final MessageRefresher refresher = new MessageRefresher();
     private final AmazonSQS client;
-    private final MessageSerializer serializer;
     private final SqsCourierMessageBinRegistry messageBinRegistry;
 
     /**
@@ -79,12 +77,10 @@ public final class SqsClient implements Client {
      * and {@link SqsCourierMessageBinRegistry}.
      *
      * @param client the AWS SQS client
-     * @param serializer a serializer for turning {@link Message Messages} into strings
      * @param messageBinRegistry a registry containing {@link MessageBin} mappings to SQS queue urls
      */
-    public SqsClient(AmazonSQS client, MessageSerializer serializer, SqsCourierMessageBinRegistry messageBinRegistry) {
+    public SqsClient(AmazonSQS client, SqsCourierMessageBinRegistry messageBinRegistry) {
         this.client = requireNonNull(client);
-        this.serializer = requireNonNull(serializer);
         this.messageBinRegistry = requireNonNull(messageBinRegistry);
     }
 
@@ -93,11 +89,9 @@ public final class SqsClient implements Client {
      * @throws QueuebaccaException if the message exceeds the max SQS size of 256KBs
      */
     @Override
-    public <M extends Message> OutgoingEnvelope<M> sendMessage(MessageBin messageBin, M message, int delay) {
+    public OutgoingEnvelope sendMessage(MessageBin messageBin, String messageBody, int delay) {
         requireNonNull(messageBin);
-        requireNonNull(message);
-
-        String messageBody = serializer.toString(message);
+        requireNonNull(messageBody);
 
         SendMessageRequest sqsRequest = new SendMessageRequest()
                 .withQueueUrl(messageBinRegistry.getQueueUrl(messageBin))
@@ -107,7 +101,7 @@ public final class SqsClient implements Client {
 
         LoggerFactory.getLogger(messageBin.getName()).info("Sent SQS message '{}'", messageId);
 
-        return new OutgoingEnvelope<>(messageId, message, messageBody);
+        return new OutgoingEnvelope(messageId, messageBody);
     }
 
     /**
@@ -118,16 +112,16 @@ public final class SqsClient implements Client {
      * @throws QueuebaccaException if a single message exceeds the max size of 25KBs for a batch (256KB total max size)
      */
     @Override
-    public <M extends Message> Collection<OutgoingEnvelope<M>> sendMessages(MessageBin messageBin, Collection<M> messages, int delay) {
+    public Collection<OutgoingEnvelope> sendMessages(MessageBin messageBin, Collection<String> messageBodies, int delay) {
         requireNonNull(messageBin);
-        requireNonNull(messages);
+        requireNonNull(messageBodies);
 
-        if (messages.isEmpty()) {
+        if (messageBodies.isEmpty()) {
             return Collections.emptyList();
         }
 
-        SqsMessageBatchSender<M> batchSender = new SqsMessageBatchSender<>(client, serializer, LoggerFactory.getLogger(messageBin.getName()));
-        messages.forEach(batchSender::add);
+        SqsMessageBatchSender batchSender = new SqsMessageBatchSender(client, LoggerFactory.getLogger(messageBin.getName()));
+        messageBodies.forEach(batchSender::add);
         return batchSender.send(messageBinRegistry.getQueueUrl(messageBin), delay);
     }
 
@@ -136,18 +130,18 @@ public final class SqsClient implements Client {
      * <p>
      *     <b>NOTE:</b> At most 10 messages will be retrieved, despite what max messages is set to, due to SQS restrictions.
      * </p>
+     * @return
      */
-    @Override
-    public <M extends Message> Collection<IncomingEnvelope<M>> retrieveMessages(MessageBin messageBin, int maxMessages) {
+    public Collection<IncomingEnvelope> retrieveMessages(MessageBin messageBin, int maxMessages) {
         ReceiveMessageRequest sqsRequest = new ReceiveMessageRequest()
                 .withQueueUrl(messageBinRegistry.getQueueUrl(messageBin))
                 .withMaxNumberOfMessages(Math.min(MAX_READ_COUNT, maxMessages))
                 .withWaitTimeSeconds(20)
                 .withAttributeNames(APPROXIMATE_RECEIVE_COUNT_ATTRIBUTE, APPROXIMATE_FIRST_RECEIVE_TIMESTAMP_ATTRIBUTE);
-        Collection<IncomingEnvelope<M>> messages = new ArrayList<>();
+        Collection<IncomingEnvelope> messages = new ArrayList<>();
         for (com.amazonaws.services.sqs.model.Message sqsMessage : client.receiveMessage(sqsRequest).getMessages()) {
             LoggerFactory.getLogger(messageBin.getName()).info("Received SQS message '{}'", sqsMessage.getMessageId());
-            IncomingEnvelope<M> message = mapSqsMessage(sqsMessage);
+            IncomingEnvelope message = toIncomingEnvelope(sqsMessage);
             messages.add(message);
         }
 
@@ -164,7 +158,7 @@ public final class SqsClient implements Client {
      * {@inheritDoc}
      */
     @Override
-    public void returnMessage(MessageBin messageBin, IncomingEnvelope<?> incomingEnvelope, int delay) {
+    public void returnMessage(MessageBin messageBin, IncomingEnvelope incomingEnvelope, int delay) {
         requireNonNull(messageBin);
         requireNonNull(incomingEnvelope);
 
@@ -183,7 +177,7 @@ public final class SqsClient implements Client {
      * {@inheritDoc}
      */
     @Override
-    public void disposeMessage(MessageBin messageBin, IncomingEnvelope<?> incomingEnvelope) {
+    public void disposeMessage(MessageBin messageBin, IncomingEnvelope incomingEnvelope) {
         try {
             DeleteMessageRequest sqsRequest = new DeleteMessageRequest()
                     .withQueueUrl(messageBinRegistry.getQueueUrl(messageBin))
@@ -194,14 +188,12 @@ public final class SqsClient implements Client {
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private <M extends Message> IncomingEnvelope<M> mapSqsMessage(com.amazonaws.services.sqs.model.Message sqsMessage) {
+    private IncomingEnvelope toIncomingEnvelope(com.amazonaws.services.sqs.model.Message sqsMessage) {
         return new IncomingEnvelope(
                 sqsMessage.getMessageId(),
                 sqsMessage.getReceiptHandle(),
-                Integer.valueOf(sqsMessage.getAttributes().get(APPROXIMATE_RECEIVE_COUNT_ATTRIBUTE)),
-                Instant.ofEpochMilli(Long.valueOf(sqsMessage.getAttributes().get(APPROXIMATE_FIRST_RECEIVE_TIMESTAMP_ATTRIBUTE))),
-                serializer.fromString(sqsMessage.getBody(), Message.class),
+                Integer.parseInt(sqsMessage.getAttributes().get(APPROXIMATE_RECEIVE_COUNT_ATTRIBUTE)),
+                Instant.ofEpochMilli(Long.parseLong(sqsMessage.getAttributes().get(APPROXIMATE_FIRST_RECEIVE_TIMESTAMP_ATTRIBUTE))),
                 sqsMessage.getBody()
         );
     }
@@ -210,7 +202,7 @@ public final class SqsClient implements Client {
 
         private final Map<IncomingEnvelope, Future<?>> futures = new ConcurrentHashMap<>();
 
-        void scheduleRefresh(IncomingEnvelope<?> envelope, String queueUrl, Duration visibilityTimeout, Logger logger) {
+        void scheduleRefresh(IncomingEnvelope envelope, String queueUrl, Duration visibilityTimeout, Logger logger) {
             Duration delay = visibilityTimeout.toMinutes() < 2
                     ? visibilityTimeout.dividedBy(2)
                     : visibilityTimeout.minusMinutes(1);
@@ -218,11 +210,11 @@ public final class SqsClient implements Client {
             futures.put(envelope, future);
         }
 
-        void cancelRefresh(IncomingEnvelope<?> envelope) {
+        void cancelRefresh(IncomingEnvelope envelope) {
             futures.remove(envelope).cancel(true);
         }
 
-        private void refreshMessages(IncomingEnvelope<?> envelope, String queueUrl, Duration visibilityTimeout, Logger logger) {
+        private void refreshMessages(IncomingEnvelope envelope, String queueUrl, Duration visibilityTimeout, Logger logger) {
             logger.info("Refreshing SQS message '{}' for '{}' seconds", envelope.getMessageId(), visibilityTimeout.getSeconds());
             ChangeMessageVisibilityRequest sqsRequest = new ChangeMessageVisibilityRequest()
                     .withQueueUrl(queueUrl)

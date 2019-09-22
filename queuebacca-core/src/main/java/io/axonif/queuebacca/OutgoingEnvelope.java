@@ -19,27 +19,22 @@ package io.axonif.queuebacca;
 import static java.util.Objects.requireNonNull;
 
 /**
- * A container for an outgoing {@link M message}.
- *
- * @param <M> the message type
+ * A container for an outgoing message.
  */
-public final class OutgoingEnvelope<M extends Message> {
+public final class OutgoingEnvelope {
 
     private final String messageId;
-    private final M message;
-    private final String rawMessage;
+    private final String messageBody;
 
     /**
-     * Creates a new instance of a {@link OutgoingEnvelope} with a {@link M message} and it's unique id.
+     * Creates a new instance of a {@link OutgoingEnvelope} with a message and it's unique id.
      *
      * @param messageId the message id
-     * @param message the message
-     * @param rawMessage the serialized representing of the message
+     * @param messageBody the message
      */
-    public OutgoingEnvelope(String messageId, M message, String rawMessage) {
+    public OutgoingEnvelope(String messageId, String messageBody) {
         this.messageId = requireNonNull(messageId);
-        this.message = requireNonNull(message);
-        this.rawMessage = requireNonNull(rawMessage);
+        this.messageBody = requireNonNull(messageBody);
     }
 
     /**
@@ -52,20 +47,11 @@ public final class OutgoingEnvelope<M extends Message> {
     }
 
     /**
-     * Gets the {@link M message}.
+     * Gets the body of message.
      *
-     * @return the message
+     * @return the message body
      */
-    public M getMessage() {
-        return message;
-    }
-
-    /**
-     * The serialized representation of the message.
-     *
-     * @return the raw message
-     */
-    public String getRawMessage() {
-        return rawMessage;
+    public String getMessageBody() {
+        return messageBody;
     }
 }

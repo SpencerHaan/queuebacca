@@ -14,13 +14,25 @@
  * limitations under the License.
  */
 
-package io.axonif.queuebacca;
+package io.axonif.queuebacca.publishing.events;
 
-import com.fasterxml.jackson.annotation.JsonTypeInfo;
-import com.fasterxml.jackson.annotation.JsonTypeInfo.As;
-import com.fasterxml.jackson.annotation.JsonTypeInfo.Id;
+import static java.util.Objects.requireNonNull;
 
-@JsonTypeInfo(include = As.WRAPPER_OBJECT, use = Id.CLASS)
-public interface Message {
-    // Marker interface for messages
+public class MessagePublishedEvent {
+
+    private final String messageId;
+    private final String messageBody;
+
+    public MessagePublishedEvent(String messageId, String messageBody) {
+        this.messageId = requireNonNull(messageId);
+        this.messageBody = requireNonNull(messageBody);
+    }
+
+    public String getMessageId() {
+        return messageId;
+    }
+
+    public String getMessageBody() {
+        return messageBody;
+    }
 }

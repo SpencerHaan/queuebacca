@@ -25,64 +25,60 @@ import java.util.Optional;
 public interface Client {
 
     /**
-     * Sends a single {@link Message} to the provided {@link MessageBin} with an optional delay.
+     * Sends a single message to the provided {@link MessageBin} with an optional delay.
      *
      * @param messageBin the message bin to send the message to
-     * @param message the message
+     * @param messageBody the message
      * @param delay a delay of 0 or greater
-     * @param <M> the type of the message
      * @return a {@link OutgoingEnvelope} containing information of the sent message
      */
-    <M extends Message> OutgoingEnvelope<M> sendMessage(MessageBin messageBin, M message, int delay); // SPENCER Add a default here for parity with retrieveMessage()
+    OutgoingEnvelope sendMessage(MessageBin messageBin, String messageBody, int delay);
 
     /**
-     * Sends a collection of {@link Message Messages} to the provided {@link MessageBin} with an optional delay
+     * Sends a collection of messages to the provided {@link MessageBin} with an optional delay
      * that will be applied to all of them.
      *
      * @param messageBin the message bin to send the messages to
-     * @param messages the messages
+     * @param messageBodies the messages
      * @param delay a delay of 0 or greater
-     * @param <M> the type of the message
      * @return a collection of {@link OutgoingEnvelope OutgoingEnvelopes} containing information of the sent messages
      */
-    <M extends Message> Collection<OutgoingEnvelope<M>> sendMessages(MessageBin messageBin, Collection<M> messages, int delay);
+    Collection<OutgoingEnvelope> sendMessages(MessageBin messageBin, Collection<String> messageBodies, int delay);
 
     /**
-     * Retrieves a single {@link Message} from the provided {@link MessageBin}.
+     * Retrieves a single message from the provided {@link MessageBin}.
      *
      * @param messageBin the message bin to retrieve the message from
-     * @param <M> the type of the message
-     * @return a {@link Message} or {@link Optional#empty()} if no message could be retrieved.
+     * @return a message or {@link Optional#empty()} if no message could be retrieved.
      */
-    default <M extends Message> Optional<IncomingEnvelope<M>> retrieveMessage(MessageBin messageBin) {
-        Collection<IncomingEnvelope<M>> messages = retrieveMessages(messageBin, 1);
-        return messages.stream().findFirst();
+    default Optional<IncomingEnvelope> retrieveMessage(MessageBin messageBin) {
+        return retrieveMessages(messageBin, 1).stream()
+                .findFirst();
     }
 
     /**
-     * Retrieves up to the max {@link Message Messages} specified from the provided {@link MessageBin}.
+     * Retrieves up to the max messages specified from the provided {@link MessageBin}.
      *
      * @param messageBin the message bin to retrieve the messages from
      * @param maxMessages the upper limit of messages to retrieve
-     * @param <M> the type of the message
-     * @return zero or more {@link Message Messages} up to the maximum
+     * @return zero or more messages up to the maximum
      */
-    <M extends Message> Collection<IncomingEnvelope<M>> retrieveMessages(MessageBin messageBin, int maxMessages);
+    Collection<IncomingEnvelope> retrieveMessages(MessageBin messageBin, int maxMessages);
 
     /**
-     * Returns a retrieved {@link Message} to the provided {@link MessageBin}, giving it an optional delay.
+     * Returns a retrieved message to the provided {@link MessageBin}, giving it an optional delay.
      *
      * @param messageBin the message bin to return the message to
      * @param incomingEnvelope the previously retrieved {@link IncomingEnvelope}
      * @param delay a delay of 0 or greater
      */
-    void returnMessage(MessageBin messageBin, IncomingEnvelope<?> incomingEnvelope, int delay);
+    void returnMessage(MessageBin messageBin, IncomingEnvelope incomingEnvelope, int delay);
 
     /**
-     * Disposes of a previously retrieved {@link Message} from the provided {@link MessageBin}.
+     * Disposes of a previously retrieved message from the provided {@link MessageBin}.
      *
      * @param messageBin the message bin to dispose the message from
      * @param incomingEnvelope the previously retrieved {@link IncomingEnvelope}
      */
-    void disposeMessage(MessageBin messageBin, IncomingEnvelope<?> incomingEnvelope);
+    void disposeMessage(MessageBin messageBin, IncomingEnvelope incomingEnvelope);
 }

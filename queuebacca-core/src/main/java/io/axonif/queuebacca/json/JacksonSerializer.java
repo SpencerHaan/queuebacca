@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package io.axonif.queuebacca.sqs;
+package io.axonif.queuebacca.json;
 
 import java.io.IOException;
 import java.util.Objects;
@@ -22,7 +22,7 @@ import java.util.Objects;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.axonif.queuebacca.exceptions.QueuebaccaException;
-import io.axonif.queuebacca.util.MessageSerializer;
+import io.axonif.queuebacca.MessageSerializer;
 
 public class JacksonSerializer implements MessageSerializer {
 
@@ -33,7 +33,7 @@ public class JacksonSerializer implements MessageSerializer {
     }
 
     @Override
-    public <T> String toString(T object) {
+    public <Message> String toString(Message object, Class<? extends Message> messageType) {
         if (object == null) throw new QueuebaccaException("Target cannot be null");
         try {
             return mapper.writeValueAsString(object);
@@ -43,13 +43,13 @@ public class JacksonSerializer implements MessageSerializer {
     }
 
     @Override
-    public <T> T fromString(String json, Class<T> clazz) {
+    public <Message> Message fromString(String json, Class<? extends Message> messageType) {
         if (json == null) throw new QueuebaccaException("String cannot be null");
-        if (clazz == null) throw new QueuebaccaException("Class type cannot be null");
+        if (messageType == null) throw new QueuebaccaException("Class type cannot be null");
         try {
-            return mapper.readerFor(clazz).readValue(json);
+            return mapper.readerFor(messageType).readValue(json);
         } catch (IOException e) {
-            throw new QueuebaccaException("Failed to map from " + json + " to " + clazz.getName(), e);
+            throw new QueuebaccaException("Failed to map from " + json + " to " + messageType.getName(), e);
         }
     }
 }

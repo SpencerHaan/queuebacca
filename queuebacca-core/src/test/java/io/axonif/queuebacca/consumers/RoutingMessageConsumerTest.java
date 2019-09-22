@@ -25,7 +25,6 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.Test;
 
-import io.axonif.queuebacca.Message;
 import io.axonif.queuebacca.MessageConsumer;
 import io.axonif.queuebacca.MessageContext;
 import io.axonif.queuebacca.exceptions.QueuebaccaConfigurationException;
@@ -41,14 +40,14 @@ public class RoutingMessageConsumerTest {
 
 	@Test(expected = NullPointerException.class)
 	public void consume_nullMessage() {
-		RoutingMessageConsumer<Message> messageConsumer = RoutingMessageConsumer.builder()
+		RoutingMessageConsumer<Message> messageConsumer = RoutingMessageConsumer.<Message>builder()
 				.build();
 		messageConsumer.consume(null, new MessageContext("", 0, Instant.now(), "rawMessage"));
 	}
 
 	@Test(expected = NullPointerException.class)
 	public void consume_nullContext() {
-		RoutingMessageConsumer<Message> messageConsumer = RoutingMessageConsumer.builder()
+		RoutingMessageConsumer<Message> messageConsumer = RoutingMessageConsumer.<Message>builder()
 				.build();
 		messageConsumer.consume(new MessageType1(), null);
 	}
@@ -56,7 +55,7 @@ public class RoutingMessageConsumerTest {
 	@Test
 	public void consume_inheritanceFallbackRoute() {
 		AtomicBoolean called = new AtomicBoolean(false);
-		RoutingMessageConsumer<Message> messageConsumer = RoutingMessageConsumer.builder()
+		RoutingMessageConsumer<Message> messageConsumer = RoutingMessageConsumer.<Message>builder()
 				.registerMessageRoute(Message.class, MessageConsumer.basic(message -> called.set(true)))
 				.build();
 		messageConsumer.consume(new MessageType1(), new MessageContext("", 0, Instant.now(), "rawMessage"));
@@ -83,7 +82,7 @@ public class RoutingMessageConsumerTest {
 		AtomicReference<String> actualMessage1Id = new AtomicReference<>();
 		AtomicReference<String> actualMessage2Id = new AtomicReference<>();
 
-		RoutingMessageConsumer<Message> messageConsumer = RoutingMessageConsumer.builder()
+		RoutingMessageConsumer<Message> messageConsumer = RoutingMessageConsumer.<Message>builder()
 				.registerMessageRoute(MessageType1.class, MessageConsumer.responseless((message, context) -> actualMessage1Id.set(context.getMessageId())))
 				.registerMessageRoute(MessageType2.class, MessageConsumer.responseless((message, context) -> actualMessage2Id.set(context.getMessageId())))
 				.build();
@@ -96,12 +95,14 @@ public class RoutingMessageConsumerTest {
 
 	@Test(expected = QueuebaccaConfigurationException.class)
 	public void consume_noRoute() {
-		RoutingMessageConsumer<Message> messageConsumer = RoutingMessageConsumer.builder()
+		RoutingMessageConsumer<Message> messageConsumer = RoutingMessageConsumer.<Message>builder()
 				.build();
 		messageConsumer.consume(new MessageType1(), new MessageContext("", 0, Instant.now(), "rawMessage"));
 	}
 
-	private class MessageType1 implements Message { }
+	private interface Message {}
 
-	private class MessageType2 implements Message { }
+	private static class MessageType1 implements Message {}
+
+	private static class MessageType2 implements Message {}
 }

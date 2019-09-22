@@ -21,7 +21,7 @@ import static java.util.Objects.requireNonNull;
 import java.time.Instant;
 
 /**
- * Contains contextual information for the consumption of a {@link Message}.
+ * Contains contextual information for the consumption of a message.
  */
 public final class MessageContext {
 

@@ -33,9 +33,9 @@ import io.axonif.queuebacca.events.TimingEventSupport;
 /**
  * An active subscription that periodically checks for new messages, distributing the consumption using a {@link ThreadPoolWorkExecutor}.
  *
- * @param <M> the message type
+ * @param <Message> the message type
  */
-class ActiveSubscription<M extends Message> {
+class ActiveSubscription<Message> {
 
     private static final int SUBSCRIPTION_INITIAL_DELAY = 1000; // milliseconds
     private static final int SUBSCRIPTION_PERIODIC_DELAY = 1; // milliseconds
@@ -47,9 +47,12 @@ class ActiveSubscription<M extends Message> {
     private final MessageBin messageBin;
     private final WorkExecutor workExecutor;
     private final RetryDelayGenerator retryDelayGenerator;
-    private final Subscriber.SubscriptionHarness<M> subscriptionHarness;
+    private final Subscriber.SubscriptionHarness<Message> subscriptionHarness;
     private final ExceptionResolver exceptionResolver;
     private final TimingEventSupport timingEventSupport;
+
+    private final MessageSerializer messageSerializer;
+    private final Class<? extends Message> messageType;
 
     private ActiveSubscription(
             ScheduledExecutorService subscriptionScheduler,
@@ -57,10 +60,12 @@ class ActiveSubscription<M extends Message> {
             MessageBin messageBin,
             WorkExecutor workExecutor,
             RetryDelayGenerator retryDelayGenerator,
-            Subscriber.SubscriptionHarness<M> subscriptionHarness,
+            Subscriber.SubscriptionHarness<Message> subscriptionHarness,
             ExceptionResolver exceptionResolver,
             TimingEventSupport timingEventSupport,
-            Logger logger
+            Logger logger,
+            MessageSerializer messageSerializer,
+            Class<? extends Message> messageType
     ) {
         this.subscriptionScheduler = subscriptionScheduler;
         this.client = client;
@@ -71,10 +76,12 @@ class ActiveSubscription<M extends Message> {
         this.exceptionResolver = exceptionResolver;
         this.timingEventSupport = timingEventSupport;
         this.logger = logger;
+        this.messageSerializer = messageSerializer;
+        this.messageType = messageType;
     }
 
-    static <M extends Message> ActiveSubscription<M> start(
-            SubscriptionConfiguration<M> configuration,
+    static <Message> ActiveSubscription<Message> start(
+            SubscriptionConfiguration<Message> configuration,
             Client client,
             WorkExecutor workExecutor,
             ExceptionResolver exceptionResolver,
@@ -85,7 +92,7 @@ class ActiveSubscription<M extends Message> {
                 .build());
 
         Logger logger = LoggerFactory.getLogger(configuration.getMessageBin().getName());
-        ActiveSubscription<M> subscription = new ActiveSubscription<>(
+        ActiveSubscription<Message> subscription = new ActiveSubscription<>(
                 subscriptionScheduler,
                 client,
                 configuration.getMessageBin(),
@@ -94,7 +101,9 @@ class ActiveSubscription<M extends Message> {
                 configuration.getSubscriptionHarness(),
                 exceptionResolver,
                 timingEventSupport,
-                logger
+                logger,
+                configuration.getMessageSerializer(),
+                configuration.getMessageType()
         );
 
         subscriptionScheduler.scheduleAtFixedRate(() -> {
@@ -119,7 +128,7 @@ class ActiveSubscription<M extends Message> {
 
     private void check() throws InterruptedException {
         workExecutor.submitWorkOrders(capacity -> {
-            Collection<IncomingEnvelope<M>> envelopes = client.retrieveMessages(messageBin, capacity);
+            Collection<IncomingEnvelope> envelopes = client.retrieveMessages(messageBin, capacity);
             return envelopes.stream()
                     .map(SubscriptionWorkOrder::new)
                     .collect(Collectors.toList());
@@ -128,9 +137,9 @@ class ActiveSubscription<M extends Message> {
 
     private class SubscriptionWorkOrder implements WorkExecutor.WorkOrder {
 
-        private final IncomingEnvelope<M> envelope;
+        private final IncomingEnvelope envelope;
 
-        private SubscriptionWorkOrder(IncomingEnvelope<M> envelope) {
+        private SubscriptionWorkOrder(IncomingEnvelope envelope) {
             this.envelope = envelope;
         }
 
@@ -139,33 +148,35 @@ class ActiveSubscription<M extends Message> {
             subscriptionHarness.handle(envelope, this::processEnvelope);
         }
 
-        private void processEnvelope(IncomingEnvelope<M> envelope, MessageConsumer<M> consumer) {
-            MessageContext context = new MessageContext(envelope.getMessageId(), envelope.getReadCount(), envelope.getFirstReceived(), envelope.getRawMessage());
+        private void processEnvelope(IncomingEnvelope envelope, MessageConsumer<Message> consumer) {
+            MessageContext context = new MessageContext(envelope.getMessageId(), envelope.getReadCount(), envelope.getFirstReceived(), envelope.getMessageBody());
             MDC.put("queuebaccaMessageId", context.getMessageId());
             MDC.put("queuebaccaMessageReadCount", String.valueOf(context.getReadCount()));
             try {
                 MessageResponse response;
                 try {
+                    Message message = messageSerializer.fromString(envelope.getMessageBody(), messageType);
+
                     long start = System.currentTimeMillis();
                     try {
-                        response = consumer.consume(envelope.getMessage(), context);
+                        response = consumer.consume(message, context);
                     } finally {
                         long duration = System.currentTimeMillis() - start;
-                        timingEventSupport.fireEvent(messageBin, envelope.getMessage().getClass(), envelope.getMessageId(), duration);
+                        timingEventSupport.fireEvent(messageBin, message.getClass(), envelope.getMessageId(), duration);
                     }
                 } catch (Exception e) {
                     response = exceptionResolver.resolve(e, context);
                 }
                 handleResponse(response, envelope, envelope.getReadCount());
             } catch (Error e) {
-                logger.error("Error occurred while processing message: '{}' with body '{}'", new Object[]{ envelope.getMessageId(), envelope.getRawMessage(), e });
+                logger.error("Error occurred while processing message: '{}' with body '{}'", new Object[]{ envelope.getMessageId(), envelope.getMessageBody(), e });
                 throw e;
             } finally {
                 MDC.clear();
             }
         }
 
-        private void handleResponse(MessageResponse response, IncomingEnvelope<M> envelope, int attempts) {
+        private void handleResponse(MessageResponse response, IncomingEnvelope envelope, int attempts) {
             switch (response) {
                 case CONSUMED:
                     logger.info("Consumed '{}'; disposing", envelope.getMessageId());
@@ -173,15 +184,15 @@ class ActiveSubscription<M extends Message> {
                     break;
                 case RETRY:
                     int retryDelay = retryDelayGenerator.nextRetryDelay(attempts);
-                    logger.warn("Retrying Message '{}' with body {} after {} seconds", new Object[]{ envelope.getMessageId(), envelope.getRawMessage(), retryDelay });
+                    logger.warn("Retrying Message '{}' with body {} after {} seconds", new Object[]{ envelope.getMessageId(), envelope.getMessageBody(), retryDelay });
                     client.returnMessage(messageBin, envelope, retryDelay);
                     break;
                 case TERMINATE:
-                    logger.warn("Terminated '{}' with body {}; disposing", envelope.getMessageId(), envelope.getRawMessage());
+                    logger.warn("Terminated '{}' with body {}; disposing", envelope.getMessageId(), envelope.getMessageBody());
                     client.disposeMessage(messageBin, envelope);
                     break;
                 default:
-                    logger.error("Unknown exception resolution, {}, for '{}'  with body {}; disposing", new Object[]{ response, envelope.getMessageId(), envelope.getRawMessage() });
+                    logger.error("Unknown exception resolution, {}, for '{}'  with body {}; disposing", new Object[]{ response, envelope.getMessageId(), envelope.getMessageBody() });
                     client.disposeMessage(messageBin, envelope);
                     break;
             }

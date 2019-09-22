@@ -17,6 +17,7 @@
 package io.axonif.queuebacca.sqs;
 
 import static org.junit.Assert.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -29,7 +30,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.junit.Test;
-import org.mockito.Matchers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,20 +41,17 @@ import com.amazonaws.services.sqs.model.SendMessageBatchResult;
 import com.amazonaws.services.sqs.model.SendMessageBatchResultEntry;
 import com.amazonaws.services.sqs.model.SendMessageResult;
 
-import io.axonif.queuebacca.Message;
 import io.axonif.queuebacca.OutgoingEnvelope;
-import io.axonif.queuebacca.util.MessageSerializer;
 
 public class SqsMessageBatchSenderTest {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(SqsMessageBatchSenderTest.class);
 
 	private AmazonSQS mockAmazonSQS = mock(AmazonSQS.class);
-	private MessageSerializer serializer = new TestMessageSerializer();
 
 	@Test
 	public void send() {
-		when(mockAmazonSQS.sendMessageBatch(Matchers.any())).thenAnswer(invocation -> {
+		when(mockAmazonSQS.sendMessageBatch(any())).thenAnswer(invocation -> {
 			SendMessageBatchRequest request = invocation.getArgument(0, SendMessageBatchRequest.class);
 			Collection<SendMessageBatchResultEntry> successful = request.getEntries().stream()
 					.map(e -> new SendMessageBatchResultEntry().withMessageId(UUID.randomUUID().toString()).withId(e.getId()))
@@ -62,16 +59,16 @@ public class SqsMessageBatchSenderTest {
 			return new SendMessageBatchResult().withSuccessful(successful);
 		});
 
-		Set<TestMessage> expectedMessages = new TreeSet<>();
-		SqsMessageBatchSender<TestMessage> batchSender = new SqsMessageBatchSender<>(mockAmazonSQS, serializer, LOGGER);
+		Set<String> expectedMessages = new TreeSet<>();
+		SqsMessageBatchSender batchSender = new SqsMessageBatchSender(mockAmazonSQS, LOGGER);
 		for (int i = 0; i < 10; i++) {
-			TestMessage message = new TestMessage("test-" + i);
+			String message = "test-" + i;
 			expectedMessages.add(message);
 			batchSender.add(message);
 		}
 
-		Set<TestMessage> actualMessages = batchSender.send("fake-url", 0).stream()
-				.map(OutgoingEnvelope::getMessage)
+		Set<String> actualMessages = batchSender.send("fake-url", 0).stream()
+				.map(OutgoingEnvelope::getMessageBody)
 				.collect(Collectors.toCollection(TreeSet::new));
 
 		assertEquals(expectedMessages, actualMessages);
@@ -79,7 +76,7 @@ public class SqsMessageBatchSenderTest {
 
 	@Test
 	public void send_MessageRetry() {
-		when(mockAmazonSQS.sendMessageBatch(Matchers.any())).thenAnswer(invocation -> {
+		when(mockAmazonSQS.sendMessageBatch(any())).thenAnswer(invocation -> {
 			SendMessageBatchRequest request = invocation.getArgument(0, SendMessageBatchRequest.class);
 
 			List<SendMessageBatchRequestEntry> entries = new ArrayList<>(request.getEntries());
@@ -97,60 +94,20 @@ public class SqsMessageBatchSenderTest {
 					.withSuccessful(successful)
 					.withFailed(failed);
 		});
-		when(mockAmazonSQS.sendMessage(Matchers.any())).then(i -> new SendMessageResult().withMessageId(UUID.randomUUID().toString()));
+		when(mockAmazonSQS.sendMessage(any())).then(i -> new SendMessageResult().withMessageId(UUID.randomUUID().toString()));
 
-		Set<TestMessage> expectedMessages = new TreeSet<>();
-		SqsMessageBatchSender<TestMessage> batchSender = new SqsMessageBatchSender<>(mockAmazonSQS, serializer, LOGGER);
+		Set<String> expectedMessages = new TreeSet<>();
+		SqsMessageBatchSender batchSender = new SqsMessageBatchSender(mockAmazonSQS, LOGGER);
 		for (int i = 0; i < 10; i++) {
-			TestMessage message = new TestMessage("test-" + i);
+			String message = "test-" + i;
 			expectedMessages.add(message);
 			batchSender.add(message);
 		}
 
-		Set<TestMessage> actualMessages = batchSender.send("fake-url", 0).stream()
-				.map(OutgoingEnvelope::getMessage)
+		Set<String> actualMessages = batchSender.send("fake-url", 0).stream()
+				.map(OutgoingEnvelope::getMessageBody)
 				.collect(Collectors.toCollection(TreeSet::new));
 
 		assertEquals(expectedMessages, actualMessages);
-	}
-
-	public static class TestMessage implements Message, Comparable<TestMessage> {
-
-		private String value;
-
-		private TestMessage(String value) {
-			this.value = value;
-		}
-
-		@SuppressWarnings("unused")
-		private TestMessage() {
-			// Required by Jackson
-		}
-
-		@Override
-		public int compareTo(TestMessage o) {
-			return value.compareTo(o.value);
-		}
-	}
-
-	// SPENCER Revisit this
-	public static class TestMessageSerializer implements MessageSerializer {
-
-		@Override
-		public <M> String toString(M message) {
-			if (message instanceof TestMessage) {
-				return ((TestMessage) message).value;
-			}
-			throw new UnsupportedOperationException("Must be of type TestMessage");
-		}
-
-		@SuppressWarnings("unchecked")
-		@Override
-		public <M> M fromString(String body, Class<M> messageClass) {
-			if (messageClass.equals(TestMessage.class)) {
-				return (M) new TestMessage(body);
-			}
-			throw new UnsupportedOperationException("Must be of type TestMessage");
-		}
 	}
 }
