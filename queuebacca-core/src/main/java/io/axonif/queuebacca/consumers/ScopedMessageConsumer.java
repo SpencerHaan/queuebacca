@@ -101,8 +101,7 @@ public final class 	ScopedMessageConsumer<M extends Message> implements MessageC
 		requireNonNull(messageContext);
 
 		ConcreteMessageScopeChain messageScopeChain = new ConcreteMessageScopeChain(new LinkedList<>(messageScopes), message, messageContext);
-		messageScopeChain.next();
-		return null;
+		return messageScopeChain.next();
 	}
 
 	/**
