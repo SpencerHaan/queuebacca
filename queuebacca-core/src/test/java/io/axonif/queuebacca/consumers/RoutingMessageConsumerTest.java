@@ -25,9 +25,9 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.Test;
 
-import io.axonif.queuebacca.Context;
 import io.axonif.queuebacca.Message;
 import io.axonif.queuebacca.MessageConsumer;
+import io.axonif.queuebacca.MessageContext;
 import io.axonif.queuebacca.exceptions.QueuebaccaConfigurationException;
 
 public class RoutingMessageConsumerTest {
