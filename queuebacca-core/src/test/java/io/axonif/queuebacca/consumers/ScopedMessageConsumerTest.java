@@ -84,28 +84,28 @@ public class ScopedMessageConsumerTest {
 		messageConsumer.consume(new TestMessage(), new MessageContext("", 0, Instant.now(), "rawMessage"));
 	}
 
-	private class TestMessage implements Message { }
+	private static class TestMessage implements Message { }
 
-	private class TestMessageScope implements MessageScope {
+	private static class TestMessageScope implements MessageScope {
 
 		private String messageId;
 
 		@Override
 		public <M> MessageResponse wrap(M message, MessageContext messageContext, MessageScopeChain messageScopeChain) {
-			messageScopeChain.next();
+			MessageResponse response = messageScopeChain.next();
 			messageId = messageContext.getMessageId();
-			return null;
+			return response;
 		}
 	}
 
-	private class BrokenChainMessageScope implements MessageScope {
+	private static class BrokenChainMessageScope implements MessageScope {
 
 		private String messageId;
 
 		@Override
 		public <M> MessageResponse wrap(M message, MessageContext messageContext, MessageScopeChain messageScopeChain) {
 			messageId = messageContext.getMessageId();
-			return null;
+			return MessageResponse.TERMINATE;
 		}
 	}
 }
