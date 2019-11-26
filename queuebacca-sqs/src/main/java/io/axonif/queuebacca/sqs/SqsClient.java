@@ -25,9 +25,9 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
@@ -53,21 +53,22 @@ import io.axonif.queuebacca.util.MessageSerializer;
  */
 public final class SqsClient implements Client {
 
-    private static final ScheduledExecutorService REFRESH_SCHEDULER = Executors.newSingleThreadScheduledExecutor(new ThreadFactoryBuilder()
-            .setNameFormat("queuebacca-sqs-refresher")
-            .build());
+    private static final ScheduledExecutorService REFRESH_SCHEDULER;
 
     static {
-        Runtime.getRuntime().addShutdownHook(new Thread(REFRESH_SCHEDULER::shutdownNow));
+        ScheduledThreadPoolExecutor scheduledThreadPoolExecutor = new ScheduledThreadPoolExecutor(1, new ThreadFactoryBuilder()
+                .setNameFormat("queuebacca-sqs-messageTimeoutRefresher")
+                .build());
+        scheduledThreadPoolExecutor.setRemoveOnCancelPolicy(true);
+        Runtime.getRuntime().addShutdownHook(new Thread(scheduledThreadPoolExecutor::shutdownNow));
+
+        REFRESH_SCHEDULER = scheduledThreadPoolExecutor;
     }
 
     private static final String APPROXIMATE_RECEIVE_COUNT_ATTRIBUTE = "ApproximateReceiveCount";
     private static final String APPROXIMATE_FIRST_RECEIVE_TIMESTAMP_ATTRIBUTE = "ApproximateFirstReceiveTimestamp";
 
-    public static final int DEFAULT_SQS_CONNECTIONS = 200;
-    public static final String DEFAULT_SQS_CONNECTIONS_PROPERTY = "maxConnections";
-
-    public static final int MAX_READ_COUNT = 10;
+    private static final int MAX_READ_COUNT = 10;
 
     private final MessageRefresher refresher = new MessageRefresher();
     private final AmazonSQS client;
@@ -139,6 +140,8 @@ public final class SqsClient implements Client {
      */
     @Override
     public <M extends Message> Collection<IncomingEnvelope<M>> retrieveMessages(MessageBin messageBin, int maxMessages) {
+        requireNonNull(messageBin);
+
         ReceiveMessageRequest sqsRequest = new ReceiveMessageRequest()
                 .withQueueUrl(messageBinRegistry.getQueueUrl(messageBin))
                 .withMaxNumberOfMessages(Math.min(MAX_READ_COUNT, maxMessages))
@@ -168,15 +171,13 @@ public final class SqsClient implements Client {
         requireNonNull(messageBin);
         requireNonNull(incomingEnvelope);
 
-        try {
-            ChangeMessageVisibilityRequest sqsRequest = new ChangeMessageVisibilityRequest()
-                    .withQueueUrl(messageBinRegistry.getQueueUrl(messageBin))
-                    .withReceiptHandle(requireNonNull(incomingEnvelope.getReceipt()))
-                    .withVisibilityTimeout(delay);
-            client.changeMessageVisibility(sqsRequest);
-        } finally {
-            refresher.cancelRefresh(incomingEnvelope);
-        }
+        refresher.cancelRefresh(incomingEnvelope);
+
+        ChangeMessageVisibilityRequest sqsRequest = new ChangeMessageVisibilityRequest()
+                .withQueueUrl(messageBinRegistry.getQueueUrl(messageBin))
+                .withReceiptHandle(requireNonNull(incomingEnvelope.getReceipt()))
+                .withVisibilityTimeout(delay);
+        client.changeMessageVisibility(sqsRequest);
     }
 
     /**
@@ -184,14 +185,15 @@ public final class SqsClient implements Client {
      */
     @Override
     public void disposeMessage(MessageBin messageBin, IncomingEnvelope<?> incomingEnvelope) {
-        try {
-            DeleteMessageRequest sqsRequest = new DeleteMessageRequest()
-                    .withQueueUrl(messageBinRegistry.getQueueUrl(messageBin))
-                    .withReceiptHandle(requireNonNull(incomingEnvelope.getReceipt()));
-            client.deleteMessage(sqsRequest);
-        } finally {
-            refresher.cancelRefresh(incomingEnvelope);
-        }
+        requireNonNull(messageBin);
+        requireNonNull(incomingEnvelope);
+
+        refresher.cancelRefresh(incomingEnvelope);
+
+        DeleteMessageRequest sqsRequest = new DeleteMessageRequest()
+                .withQueueUrl(messageBinRegistry.getQueueUrl(messageBin))
+                .withReceiptHandle(requireNonNull(incomingEnvelope.getReceipt()));
+        client.deleteMessage(sqsRequest);
     }
 
     @SuppressWarnings("unchecked")
@@ -199,8 +201,8 @@ public final class SqsClient implements Client {
         return new IncomingEnvelope(
                 sqsMessage.getMessageId(),
                 sqsMessage.getReceiptHandle(),
-                Integer.valueOf(sqsMessage.getAttributes().get(APPROXIMATE_RECEIVE_COUNT_ATTRIBUTE)),
-                Instant.ofEpochMilli(Long.valueOf(sqsMessage.getAttributes().get(APPROXIMATE_FIRST_RECEIVE_TIMESTAMP_ATTRIBUTE))),
+                Integer.parseInt(sqsMessage.getAttributes().get(APPROXIMATE_RECEIVE_COUNT_ATTRIBUTE)),
+                Instant.ofEpochMilli(Long.parseLong(sqsMessage.getAttributes().get(APPROXIMATE_FIRST_RECEIVE_TIMESTAMP_ATTRIBUTE))),
                 serializer.fromString(sqsMessage.getBody(), Message.class),
                 sqsMessage.getBody()
         );
