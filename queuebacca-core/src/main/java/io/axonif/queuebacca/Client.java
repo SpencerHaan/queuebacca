@@ -54,7 +54,7 @@ public interface Client {
      * @param <M> the type of the message
      * @return a {@link Message} or {@link Optional#empty()} if no message could be retrieved.
      */
-    default <M extends Message> Optional<IncomingEnvelope<M>> retrieveMessage(MessageBin messageBin) {
+    default <M extends Message> Optional<IncomingEnvelope<M>> retrieveMessage(MessageBin messageBin) throws InterruptedException {
         Collection<IncomingEnvelope<M>> messages = retrieveMessages(messageBin, 1);
         return messages.stream().findFirst();
     }
@@ -67,7 +67,7 @@ public interface Client {
      * @param <M> the type of the message
      * @return zero or more {@link Message Messages} up to the maximum
      */
-    <M extends Message> Collection<IncomingEnvelope<M>> retrieveMessages(MessageBin messageBin, int maxMessages);
+    <M extends Message> Collection<IncomingEnvelope<M>> retrieveMessages(MessageBin messageBin, int maxMessages) throws InterruptedException;
 
     /**
      * Returns a retrieved {@link Message} to the provided {@link MessageBin}, giving it an optional delay.

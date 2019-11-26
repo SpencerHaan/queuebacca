@@ -58,6 +58,6 @@ public interface WorkExecutor {
 		 * @param maximum the maximum work orders that can be created
 		 * @return zero or more work orders, up to the capacity
 		 */
-		Collection<WorkOrder> create(int maximum);
+		Collection<WorkOrder> create(int maximum) throws InterruptedException;
 	}
 }

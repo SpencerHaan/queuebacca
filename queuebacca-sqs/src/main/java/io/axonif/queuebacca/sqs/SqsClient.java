@@ -33,6 +33,7 @@ import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.amazonaws.AbortedException;
 import com.amazonaws.services.sqs.AmazonSQS;
 import com.amazonaws.services.sqs.model.ChangeMessageVisibilityRequest;
 import com.amazonaws.services.sqs.model.DeleteMessageRequest;
@@ -139,19 +140,24 @@ public final class SqsClient implements Client {
      * </p>
      */
     @Override
-    public <M extends Message> Collection<IncomingEnvelope<M>> retrieveMessages(MessageBin messageBin, int maxMessages) {
+    public <M extends Message> Collection<IncomingEnvelope<M>> retrieveMessages(MessageBin messageBin, int maxMessages) throws InterruptedException {
         requireNonNull(messageBin);
-
         ReceiveMessageRequest sqsRequest = new ReceiveMessageRequest()
                 .withQueueUrl(messageBinRegistry.getQueueUrl(messageBin))
                 .withMaxNumberOfMessages(Math.min(MAX_READ_COUNT, maxMessages))
                 .withWaitTimeSeconds(20)
                 .withAttributeNames(APPROXIMATE_RECEIVE_COUNT_ATTRIBUTE, APPROXIMATE_FIRST_RECEIVE_TIMESTAMP_ATTRIBUTE);
+
         Collection<IncomingEnvelope<M>> messages = new ArrayList<>();
-        for (com.amazonaws.services.sqs.model.Message sqsMessage : client.receiveMessage(sqsRequest).getMessages()) {
-            LoggerFactory.getLogger(messageBin.getName()).info("Received SQS message '{}'", sqsMessage.getMessageId());
-            IncomingEnvelope<M> message = mapSqsMessage(sqsMessage);
-            messages.add(message);
+        try {
+            for (com.amazonaws.services.sqs.model.Message sqsMessage : client.receiveMessage(sqsRequest).getMessages()) {
+                LoggerFactory.getLogger(messageBin.getName()).info("Received SQS message '{}'", sqsMessage.getMessageId());
+                IncomingEnvelope<M> message = mapSqsMessage(sqsMessage);
+                messages.add(message);
+            }
+        } catch (AbortedException e) {
+            LoggerFactory.getLogger(messageBin.getName()).debug("receiveMessage was aborted", e);
+            throw new InterruptedException("Message retrieval was interrupted");
         }
 
         messages.forEach(envelope -> refresher.scheduleRefresh(
