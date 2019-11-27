@@ -20,13 +20,17 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>io.axonif</groupId>
   <artifactId>queuebacca</artifactId>
-  <version>0.4.0</version>
+  <version>${revision}</version>
   <packaging>pom</packaging>
 
   <modules>
     <module>queuebacca-core</module>
     <module>queuebacca-sqs</module>
   </modules>
+
+  <properties>
+    <revision>0.4.1</revision>
+  </properties>
 
   <name>queuebacca</name>
   <description>An extensible framework for simplifying and enhancing the production and consumption of messages.</description>
