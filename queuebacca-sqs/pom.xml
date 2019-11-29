@@ -33,7 +33,6 @@
     <dependency>
       <groupId>io.axonif</groupId>
       <artifactId>queuebacca-core</artifactId>
-      <version>${revision}</version>
     </dependency>
     <dependency>
       <groupId>com.amazonaws</groupId>
