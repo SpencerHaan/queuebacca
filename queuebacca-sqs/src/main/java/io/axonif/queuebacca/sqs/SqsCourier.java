@@ -34,18 +34,11 @@ public interface SqsCourier {
     String getName();
 
     /**
-     * Gets the {@link MessageBin} representing the processing bin for this {@link SqsCourier}.
+     * Gets the {@link MessageBin} for this {@link SqsCourier}.
      *
-     * @return the processing bin
+     * @return the message bin
      */
-    MessageBin getProcessingBin();
-
-    /**
-     * Gets the {@link MessageBin} representing the recycling bin for this {@link SqsCourier}.
-     *
-     * @return the recycling bin
-     */
-    MessageBin getRecyclingBin();
+    MessageBin getMessageBin();
 
     /**
      * Gets a collection of {@link SqsTag SqsTags} related to this {@link SqsCourier}.

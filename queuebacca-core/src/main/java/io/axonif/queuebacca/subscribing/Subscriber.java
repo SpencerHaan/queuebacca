@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package io.axonif.queuebacca;
+package io.axonif.queuebacca.subscribing;
 
 import static java.util.Objects.requireNonNull;
 
@@ -33,6 +33,17 @@ import org.slf4j.MDC;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 
+import io.axonif.queuebacca.Client;
+import io.axonif.queuebacca.ExceptionResolver;
+import io.axonif.queuebacca.IncomingEnvelope;
+import io.axonif.queuebacca.Message;
+import io.axonif.queuebacca.MessageBin;
+import io.axonif.queuebacca.MessageContext;
+import io.axonif.queuebacca.MessageResponse;
+import io.axonif.queuebacca.RetryDelayGenerator;
+import io.axonif.queuebacca.ThreadPoolWorkExecutor;
+import io.axonif.queuebacca.WorkExecutor;
+import io.axonif.queuebacca.WorkExecutorFactory;
 import io.axonif.queuebacca.events.TimingEventListener;
 import io.axonif.queuebacca.events.TimingEventSupport;
 
@@ -52,6 +63,9 @@ public final class Subscriber {
     private final WorkExecutorFactory workExecutorFactory;
     private final ExceptionResolver exceptionResolver;
 
+	private final int finalFallbackReadCount;
+    private final FallbackMessageConsumerFactory finalFallbackMessageConsumerFactory;
+
 	/**
 	 * Creates a new instance of a {@link Subscriber} for a specific {@link Client}.
 	 *
@@ -59,10 +73,22 @@ public final class Subscriber {
 	 * @param workExecutorFactory factory for creating {@link WorkExecutor WorkExecutors}
 	 * @param exceptionResolver determines resolution for exceptions thrown by messages
 	 */
-	public Subscriber(Client client, WorkExecutorFactory workExecutorFactory, ExceptionResolver exceptionResolver) {
-        this.client = requireNonNull(client);
-		this.workExecutorFactory = requireNonNull(workExecutorFactory);
-		this.exceptionResolver = requireNonNull(exceptionResolver);
+	private Subscriber(
+			Client client,
+			WorkExecutorFactory workExecutorFactory,
+			ExceptionResolver exceptionResolver,
+			int finalFallbackReadCount,
+			FallbackMessageConsumerFactory finalFallbackMessageConsumerFactory
+	) {
+		this.client = client;
+		this.workExecutorFactory = workExecutorFactory;
+		this.exceptionResolver = exceptionResolver;
+		this.finalFallbackReadCount = finalFallbackReadCount;
+		this.finalFallbackMessageConsumerFactory = finalFallbackMessageConsumerFactory;
+	}
+
+	public static Builder builder(Client client) {
+		return new Builder(client);
 	}
 
 	/**
@@ -71,7 +97,7 @@ public final class Subscriber {
 	 *
 	 * @param configuration subscription configuration
 	 */
-	public void subscribe(SubscriptionConfiguration<?> configuration) {
+	public <M extends Message> void subscribe(SubscriptionConfiguration<M> configuration) {
         requireNonNull(configuration);
 
         ThreadFactory threadFactory = new ThreadFactoryBuilder()
@@ -79,7 +105,22 @@ public final class Subscriber {
                 .build();
         WorkExecutor workExecutor = workExecutorFactory.newWorkExecutor(configuration.getMessageCapacity(), threadFactory);
 
-        ActiveSubscription<?> subscription = ActiveSubscription.start(configuration, client, workExecutor, exceptionResolver, timingEventSupport);
+		MessageConsumerSelector<M> consumerSelector = configuration.getMessageConsumers();
+        if (finalFallbackMessageConsumerFactory != null) {
+        	consumerSelector = MessageConsumerSelector.builder(consumerSelector)
+					.addNextConsumer(finalFallbackReadCount, finalFallbackMessageConsumerFactory.create())
+					.build();
+		}
+
+        ActiveSubscription<M> subscription = ActiveSubscription.start(
+        		client,
+				configuration.getMessageBin(),
+				workExecutor,
+				consumerSelector,
+				configuration.getRetryDelayGenerator(),
+				exceptionResolver,
+				timingEventSupport
+		);
         activeSubscriptions.add(subscription);
     }
 
@@ -112,7 +153,7 @@ public final class Subscriber {
 		private final MessageBin messageBin;
 		private final WorkExecutor workExecutor;
 		private final RetryDelayGenerator retryDelayGenerator;
-		private final MessageConsumer<M> consumer;
+		private final MessageConsumerSelector<M> consumerSelector;
 		private final ExceptionResolver exceptionResolver;
 		private final TimingEventSupport timingEventSupport;
 
@@ -121,7 +162,7 @@ public final class Subscriber {
 				MessageBin messageBin,
 				WorkExecutor workExecutor,
 				RetryDelayGenerator retryDelayGenerator,
-				MessageConsumer<M> consumer,
+				MessageConsumerSelector<M> consumerSelector,
 				ExceptionResolver exceptionResolver,
 				TimingEventSupport timingEventSupport,
 				Logger logger
@@ -131,31 +172,33 @@ public final class Subscriber {
 			this.messageBin = messageBin;
 			this.workExecutor = workExecutor;
 			this.retryDelayGenerator = retryDelayGenerator;
-			this.consumer = consumer;
+			this.consumerSelector = consumerSelector;
 			this.exceptionResolver = exceptionResolver;
 			this.timingEventSupport = timingEventSupport;
 			this.logger = logger;
 		}
 
 		static <M extends Message> ActiveSubscription<M> start(
-				SubscriptionConfiguration<M> configuration,
 				Client client,
+				MessageBin messageBin,
 				WorkExecutor processingPool,
+				MessageConsumerSelector<M> consumerSelector,
+				RetryDelayGenerator retryDelayGenerator,
 				ExceptionResolver exceptionResolver,
 				TimingEventSupport timingEventSupport
 		) {
 			ScheduledExecutorService subscriptionScheduler = Executors.newScheduledThreadPool(1, new ThreadFactoryBuilder()
-					.setNameFormat(configuration.getMessageBin().getName() + "-subscription-%d")
+					.setNameFormat(messageBin.getName() + "-subscription-%d")
 					.build());
 
-			Logger logger = LoggerFactory.getLogger(configuration.getMessageBin().getName());
+			Logger logger = LoggerFactory.getLogger(messageBin.getName());
 			ActiveSubscription<M> subscription = new ActiveSubscription<>(
 					subscriptionScheduler,
 					client,
-					configuration.getMessageBin(),
+					messageBin,
 					processingPool,
-					configuration.getRetryDelayGenerator(),
-					configuration.getMessageConsumer(),
+					retryDelayGenerator,
+					consumerSelector,
 					exceptionResolver,
 					timingEventSupport,
 					logger
@@ -193,15 +236,19 @@ public final class Subscriber {
 
 		private ThreadPoolWorkExecutor.WorkOrder newWorkOrder(IncomingEnvelope<M> envelope) {
 			return () -> {
-				MessageContext messageContext = new MessageContext(envelope.getMessageId(), envelope.getReadCount(), envelope.getFirstReceived(), envelope.getRawMessage());
-				MDC.put("queuebaccaMessageId", messageContext.getMessageId());
-				MDC.put("queuebaccaMessageReadCount", String.valueOf(messageContext.getReadCount()));
+				MDC.put("queuebaccaMessageId", envelope.getMessageId());
+				MDC.put("queuebaccaMessageReadCount", String.valueOf(envelope.getReadCount()));
+
+				int currentReadCountThreshold = consumerSelector.currentReadCountThreshold(envelope.getReadCount());
+				int currentConsumersReadCount = envelope.getReadCount() - currentReadCountThreshold;
+				MessageContext messageContext = new MessageContext(envelope.getMessageId(), currentConsumersReadCount, envelope.getFirstReceived(), envelope.getRawMessage());
 				try {
 					MessageResponse messageResponse;
 					try {
 						long start = System.currentTimeMillis();
 						try {
-							messageResponse = consumer.consume(envelope.getMessage(), messageContext);
+							messageResponse = consumerSelector.select(envelope.getReadCount())
+									.consume(envelope.getMessage(), messageContext);
 						} finally {
 							long duration = System.currentTimeMillis() - start;
 							timingEventSupport.fireEvent(messageBin, envelope.getMessage().getClass(), envelope.getMessageId(), duration);
@@ -209,7 +256,7 @@ public final class Subscriber {
 					} catch (Exception e) {
 						messageResponse = exceptionResolver.resolve(e, messageContext);
 					}
-					handleResponse(messageResponse, envelope);
+					handleResponse(messageResponse, envelope, currentConsumersReadCount);
 				} catch (Error e) {
 					logger.error("Error occurred while processing message: '{}' with body '{}'", new Object[]{ envelope.getMessageId(), envelope.getRawMessage(), e });
 					throw e;
@@ -219,14 +266,14 @@ public final class Subscriber {
 			};
 		}
 
-		private void handleResponse(MessageResponse messageResponse, IncomingEnvelope<M> envelope) {
+		private void handleResponse(MessageResponse messageResponse, IncomingEnvelope<M> envelope, int readCount) {
 			switch (messageResponse) {
 				case CONSUMED:
 					logger.info("Consumed '{}'; disposing", envelope.getMessageId());
 					client.disposeMessage(messageBin, envelope);
 					break;
 				case RETRY:
-					int retryDelay = retryDelayGenerator.nextRetryDelay(envelope.getReadCount());
+					int retryDelay = retryDelayGenerator.nextRetryDelay(readCount);
 					logger.warn("Retrying Message '{}' with body {} after {} seconds", new Object[]{ envelope.getMessageId(), envelope.getRawMessage(), retryDelay });
 					client.returnMessage(messageBin, envelope, retryDelay);
 					break;
@@ -239,6 +286,41 @@ public final class Subscriber {
 					client.disposeMessage(messageBin, envelope);
 					break;
 			}
+		}
+	}
+
+	public static class Builder {
+
+		private final Client client;
+
+		private WorkExecutorFactory workExecutorFactory = ThreadPoolWorkExecutor::newPooledWorkExecutor;
+		private ExceptionResolver exceptionResolver = ExceptionResolver.builder().build();
+
+		private int finalFallbackReadCount;
+		private FallbackMessageConsumerFactory finalFallbackMessageConsumerFactory;
+
+		private Builder(Client client) {
+			this.client = client;
+		}
+
+		public Builder withWorkExecutorFactory(WorkExecutorFactory workExecutorFactory) {
+			this.workExecutorFactory = requireNonNull(workExecutorFactory);
+			return this;
+		}
+
+		public Builder withExceptionResolver(ExceptionResolver exceptionResolver) {
+			this.exceptionResolver = requireNonNull(exceptionResolver);
+			return this;
+		}
+
+		public Builder withFinalFallbackMessageConsumer(int readCount, FallbackMessageConsumerFactory fallbackMessageConsumerFactory) {
+			this.finalFallbackReadCount = readCount;
+			this.finalFallbackMessageConsumerFactory = requireNonNull(fallbackMessageConsumerFactory);
+			return this;
+		}
+
+		public Subscriber build() {
+			return new Subscriber(client, workExecutorFactory, exceptionResolver, finalFallbackReadCount, finalFallbackMessageConsumerFactory);
 		}
 	}
 }

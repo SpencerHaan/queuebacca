@@ -29,6 +29,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.Test;
 
 import io.axonif.queuebacca.retries.ConstantRetryDelay;
+import io.axonif.queuebacca.subscribing.Subscriber;
+import io.axonif.queuebacca.subscribing.SubscriptionConfiguration;
 
 public class IntegrationTest {
 
@@ -37,8 +39,10 @@ public class IntegrationTest {
 	@Test
 	public void subscribe() throws InterruptedException {
 		MessageBin messageBin = new MessageBin("test");
-		TestClient Client = new TestClient();
-		Subscriber subscriber = new Subscriber(Client, ThreadPoolWorkExecutor::newPooledWorkExecutor, exceptionResolver);
+		TestClient client = new TestClient();
+		Subscriber subscriber = Subscriber.builder(client)
+				.withExceptionResolver(exceptionResolver)
+				.build();
 
 		MessageConsumer<TestMessage> consumer = MessageConsumer.basic(TestMessage::markComplete);
 		SubscriptionConfiguration<TestMessage> configuration = SubscriptionConfiguration.builder(messageBin, consumer)
@@ -51,7 +55,7 @@ public class IntegrationTest {
 				.build();
 		subscriber.subscribe(configuration);
 
-		Publisher publisher = new Publisher(Client, messageBin);
+		Publisher publisher = new Publisher(client, messageBin);
 
 		CountDownLatch countDownLatch = new CountDownLatch(10);
 		Collection<TestMessage> messages = new ArrayList<>();
@@ -69,8 +73,10 @@ public class IntegrationTest {
 	@Test
 	public void subscribe_FailedMessage() throws InterruptedException {
 		MessageBin messageBin = new MessageBin("test");
-		TestClient Client = new TestClient();
-		Subscriber subscriber = new Subscriber(Client, ThreadPoolWorkExecutor::newPooledWorkExecutor, exceptionResolver);
+		TestClient client = new TestClient();
+		Subscriber subscriber = Subscriber.builder(client)
+				.withExceptionResolver(exceptionResolver)
+				.build();
 
 		MessageConsumer<TestMessage> consumer = MessageConsumer.basic(TestMessage::markComplete);
 		SubscriptionConfiguration<TestMessage> configuration = SubscriptionConfiguration.builder(messageBin, consumer)
@@ -84,7 +90,7 @@ public class IntegrationTest {
 				.build();
 		subscriber.subscribe(configuration);
 
-		Publisher publisher = new Publisher(Client, messageBin);
+		Publisher publisher = new Publisher(client, messageBin);
 
 		CountDownLatch countDownLatch = new CountDownLatch(10);
 		Map<TestMessage, AtomicInteger> messageCounters = new ConcurrentHashMap<>();
@@ -110,7 +116,7 @@ public class IntegrationTest {
 		}
 	}
 
-	private class TestMessage implements Message {
+	private static class TestMessage implements Message {
 
 		private final Runnable onComplete;
 
