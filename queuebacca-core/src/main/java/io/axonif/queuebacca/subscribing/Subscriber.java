@@ -19,22 +19,33 @@ package io.axonif.queuebacca.subscribing;
 import static java.util.Objects.requireNonNull;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.Future;
+import java.util.stream.Collectors;
 
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 import io.axonif.queuebacca.Client;
 import io.axonif.queuebacca.ExceptionResolver;
+import io.axonif.queuebacca.IncomingEnvelope;
 import io.axonif.queuebacca.Message;
 import io.axonif.queuebacca.MessageBin;
-import io.axonif.queuebacca.ThreadPoolWorkExecutor;
-import io.axonif.queuebacca.WorkExecutor;
-import io.axonif.queuebacca.WorkExecutorFactory;
+import io.axonif.queuebacca.MessageContext;
+import io.axonif.queuebacca.MessageResponse;
+import io.axonif.queuebacca.RetryDelayGenerator;
+import io.axonif.queuebacca.WorkPermitHolder;
 import io.axonif.queuebacca.events.TimingEventListener;
 import io.axonif.queuebacca.events.TimingEventSupport;
+import io.axonif.queuebacca.exceptions.QueuebaccaException;
 
 /**
  * Subscribes to {@link MessageBin MessageBins} for the purposes of consuming {@link Message ViaMessages}. Maintains
@@ -46,8 +57,8 @@ public final class Subscriber {
     private final TimingEventSupport timingEventSupport = new TimingEventSupport();
 
     private final Client client;
-    private final WorkExecutorFactory workExecutorFactory;
-    private final ExceptionResolver exceptionResolver;
+	private final ExceptionResolver exceptionResolver;
+    private final ExecutorService workPool = Executors.newCachedThreadPool();
 
 	private final int finalFallbackReadCount;
     private final FallbackMessageConsumerFactory finalFallbackMessageConsumerFactory;
@@ -56,18 +67,15 @@ public final class Subscriber {
 	 * Creates a new instance of a {@link Subscriber} for a specific {@link Client}.
 	 *
 	 * @param client the client for the message broker
-	 * @param workExecutorFactory factory for creating {@link WorkExecutor WorkExecutors}
 	 * @param exceptionResolver determines resolution for exceptions thrown by messages
 	 */
 	private Subscriber(
 			Client client,
-			WorkExecutorFactory workExecutorFactory,
 			ExceptionResolver exceptionResolver,
 			int finalFallbackReadCount,
 			FallbackMessageConsumerFactory finalFallbackMessageConsumerFactory
 	) {
 		this.client = client;
-		this.workExecutorFactory = workExecutorFactory;
 		this.exceptionResolver = exceptionResolver;
 		this.finalFallbackReadCount = finalFallbackReadCount;
 		this.finalFallbackMessageConsumerFactory = finalFallbackMessageConsumerFactory;
@@ -83,13 +91,8 @@ public final class Subscriber {
 	 *
 	 * @param configuration subscription configuration
 	 */
-	public <M extends Message> void subscribe(SubscriptionConfiguration<M> configuration) {
+	public <M extends Message> Subscription subscribe(SubscriptionConfiguration<M> configuration) {
         requireNonNull(configuration);
-
-        ThreadFactory threadFactory = new ThreadFactoryBuilder()
-                .setNameFormat(configuration.getMessageBin().getName() + "-processor-%d")
-                .build();
-        WorkExecutor workExecutor = workExecutorFactory.newWorkExecutor(configuration.getMessageCapacity(), threadFactory);
 
 		MessageConsumerSelector<M> consumerSelector = configuration.getMessageConsumers();
         if (finalFallbackMessageConsumerFactory != null) {
@@ -98,16 +101,17 @@ public final class Subscriber {
 					.build();
 		}
 
-        ActiveSubscription<M> subscription = ActiveSubscription.start(
-        		client,
+        ActiveSubscription<M> subscription = new ActiveSubscription<M>(
+				client,
 				configuration.getMessageBin(),
-				workExecutor,
-				consumerSelector,
+				new WorkPermitHolder(configuration.getMessageCapacity()),
 				configuration.getRetryDelayGenerator(),
-				exceptionResolver,
-				timingEventSupport
+				consumerSelector,
+				LoggerFactory.getLogger(configuration.getMessageBin().getName())
 		);
         activeSubscriptions.add(subscription);
+        subscription.start();
+        return subscription;
     }
 
 	/**
@@ -115,6 +119,7 @@ public final class Subscriber {
 	 */
 	public void cancelAll() {
         activeSubscriptions.forEach(ActiveSubscription::cancel);
+        workPool.shutdownNow();
     }
 
 	public void addTimingEventListener(TimingEventListener timingEventListener) {
@@ -125,11 +130,160 @@ public final class Subscriber {
 		timingEventSupport.removeListener(timingEventListener);
 	}
 
+	private class ActiveSubscription<M extends Message> implements Subscription {
+
+		private final Logger logger;
+
+		private final Client client;
+		private final MessageBin messageBin;
+		private final WorkPermitHolder workPermitHolder;
+		private final RetryDelayGenerator retryDelayGenerator;
+		private final MessageConsumerSelector<M> consumerSelector;
+
+		private final Set<Future<?>> messageProcessingHandles = new HashSet<>();
+		private Future<?> messageCheckingHandle;
+		private boolean cancelled;
+
+		ActiveSubscription(
+				Client client,
+				MessageBin messageBin,
+				WorkPermitHolder workPermitHolder,
+				RetryDelayGenerator retryDelayGenerator,
+				MessageConsumerSelector<M> consumerSelector,
+				Logger logger
+		) {
+			this.client = client;
+			this.messageBin = messageBin;
+			this.workPermitHolder = workPermitHolder;
+			this.retryDelayGenerator = retryDelayGenerator;
+			this.consumerSelector = consumerSelector;
+			this.logger = logger;
+		}
+
+		@Override
+		public void start() {
+			if (messageCheckingHandle != null) {
+				return; // TODO Should we throw here instead?
+			}
+
+			messageCheckingHandle = workPool.submit(() -> {
+					while (true) {
+						try {
+							check();
+						} catch (InterruptedException e) {
+							if (cancelled) {
+								break;
+							}
+						} catch (Exception e) {
+							logger.error("Exception occurred while checking a subscription", e);
+						} catch (Error e) {
+							logger.error("Error occurred while checking a subscription", e);
+							throw e;
+						}
+					}
+			});
+		}
+
+		@Override
+		public void cancel() {
+			if (messageCheckingHandle == null) {
+				return;
+			}
+
+			logger.info("Cancelling subscription: '{}'", messageBin.getName());
+			cancelled = true;
+			messageCheckingHandle.cancel(true);
+			messageProcessingHandles.forEach(future -> future.cancel(true));
+		}
+
+		private void check() throws InterruptedException {
+			Queue<WorkPermitHolder.Permit> permits = new LinkedList<>(workPermitHolder.acquireAvailable());
+			int availableCapacity = permits.size();
+
+			try {
+				Collection<IncomingEnvelope<M>> envelopes = client.retrieveMessages(messageBin, availableCapacity);
+				Collection<Runnable> workOrders = envelopes.stream()
+						.map(this::newWorkOrder)
+						.collect(Collectors.toList());
+				if (workOrders.size() > availableCapacity) {
+					throw new QueuebaccaException("The number of work orders, {0}, cannot exceed the available capacity, {1}", workOrders.size(), availableCapacity);
+				}
+
+				workOrders.forEach(workOrder -> {
+					WorkPermitHolder.Permit permit = permits.remove();
+					Future<?> messageProcessingHandle = workPool.submit(() -> {
+						try {
+							workOrder.run();
+						} finally {
+							permit.release();
+						}
+					});
+					messageProcessingHandles.add(messageProcessingHandle);
+				});
+			} finally {
+				permits.iterator().forEachRemaining(WorkPermitHolder.Permit::release);
+			}
+		}
+
+		private Runnable newWorkOrder(IncomingEnvelope<M> envelope) {
+			return () -> {
+				MDC.put("queuebaccaMessageId", envelope.getMessageId());
+				MDC.put("queuebaccaMessageReadCount", String.valueOf(envelope.getReadCount()));
+
+				int currentReadCountThreshold = consumerSelector.currentReadCountThreshold(envelope.getReadCount());
+				int currentConsumersReadCount = envelope.getReadCount() - currentReadCountThreshold;
+				MessageContext messageContext = new MessageContext(envelope.getMessageId(), currentConsumersReadCount, envelope.getFirstReceived(), envelope.getRawMessage());
+				try {
+					MessageResponse messageResponse;
+					try {
+						long start = System.currentTimeMillis();
+						try {
+							messageResponse = consumerSelector.select(envelope.getReadCount())
+									.consume(envelope.getMessage(), messageContext);
+						} finally {
+							long duration = System.currentTimeMillis() - start;
+							timingEventSupport.fireEvent(messageBin, envelope.getMessage().getClass(), envelope.getMessageId(), duration);
+						}
+					} catch (Exception e) {
+						messageResponse = exceptionResolver.resolve(e, messageContext);
+					}
+					handleResponse(messageResponse, envelope, currentConsumersReadCount);
+				} catch (Error e) {
+					logger.error("Error occurred while processing message: '{}' with body '{}'", new Object[]{ envelope.getMessageId(), envelope.getRawMessage(), e });
+					throw e;
+				} finally {
+                    MDC.clear();
+				}
+			};
+		}
+
+		private void handleResponse(MessageResponse messageResponse, IncomingEnvelope<M> envelope, int readCount) {
+			switch (messageResponse) {
+				case CONSUMED:
+					logger.info("Consumed '{}'; disposing", envelope.getMessageId());
+					client.disposeMessage(messageBin, envelope);
+					break;
+				case RETRY:
+					int retryDelay = retryDelayGenerator.nextRetryDelay(readCount);
+					logger.warn("Retrying Message '{}' with body {} after {} seconds", new Object[]{ envelope.getMessageId(), envelope.getRawMessage(), retryDelay });
+					client.returnMessage(messageBin, envelope, retryDelay);
+					break;
+				case TERMINATE:
+					logger.warn("Terminated '{}' with body {}; disposing", envelope.getMessageId(), envelope.getRawMessage());
+					client.disposeMessage(messageBin, envelope);
+					break;
+				default:
+					logger.error("Unknown exception resolution, {}, for '{}'  with body {}; disposing", new Object[]{messageResponse, envelope.getMessageId(), envelope.getRawMessage() });
+					client.disposeMessage(messageBin, envelope);
+					break;
+			}
+		}
+	}
+
 	public static class Builder {
 
 		private final Client client;
 
-		private WorkExecutorFactory workExecutorFactory = ThreadPoolWorkExecutor::newPooledWorkExecutor;
 		private ExceptionResolver exceptionResolver = ExceptionResolver.builder().build();
 
 		private int finalFallbackReadCount;
@@ -137,11 +291,6 @@ public final class Subscriber {
 
 		private Builder(Client client) {
 			this.client = client;
-		}
-
-		public Builder withWorkExecutorFactory(WorkExecutorFactory workExecutorFactory) {
-			this.workExecutorFactory = requireNonNull(workExecutorFactory);
-			return this;
 		}
 
 		public Builder withExceptionResolver(ExceptionResolver exceptionResolver) {
@@ -156,7 +305,7 @@ public final class Subscriber {
 		}
 
 		public Subscriber build() {
-			return new Subscriber(client, workExecutorFactory, exceptionResolver, finalFallbackReadCount, finalFallbackMessageConsumerFactory);
+			return new Subscriber(client, exceptionResolver, finalFallbackReadCount, finalFallbackMessageConsumerFactory);
 		}
 	}
 }

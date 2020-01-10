@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
-package io.axonif.queuebacca;
+package io.axonif.queuebacca.subscribing;
 
-import java.util.concurrent.ThreadFactory;
+public interface Subscription {
 
-public interface WorkExecutorFactory {
+    void start();
 
-	WorkExecutor newWorkExecutor(int capacity, ThreadFactory threadFactory);
+    void cancel();
 }
