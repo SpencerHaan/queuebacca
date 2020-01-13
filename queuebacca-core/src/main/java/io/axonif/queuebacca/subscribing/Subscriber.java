@@ -25,8 +25,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 
@@ -46,6 +44,7 @@ import io.axonif.queuebacca.WorkPermitHolder;
 import io.axonif.queuebacca.events.TimingEventListener;
 import io.axonif.queuebacca.events.TimingEventSupport;
 import io.axonif.queuebacca.exceptions.QueuebaccaException;
+import io.axonif.queuebacca.worker.WorkPool;
 
 /**
  * Subscribes to {@link MessageBin MessageBins} for the purposes of consuming {@link Message ViaMessages}. Maintains
@@ -58,7 +57,7 @@ public final class Subscriber {
 
     private final Client client;
 	private final ExceptionResolver exceptionResolver;
-    private final ExecutorService workPool = Executors.newCachedThreadPool();
+    private final WorkPool workPool = WorkPool.start("queuebacca");
 
 	private final int finalFallbackReadCount;
     private final FallbackMessageConsumerFactory finalFallbackMessageConsumerFactory;
@@ -101,13 +100,15 @@ public final class Subscriber {
 					.build();
 		}
 
-        ActiveSubscription<M> subscription = new ActiveSubscription<M>(
+        String messageBinName = configuration.getMessageBin().getName();
+        ActiveSubscription<M> subscription = new ActiveSubscription<>(
 				client,
 				configuration.getMessageBin(),
-				new WorkPermitHolder(configuration.getMessageCapacity()),
+				workPool.acquireLicense(messageBinName + "-subscription", 1),
+				workPool.acquireLicense(messageBinName + "-processing", configuration.getMessageCapacity()),
 				configuration.getRetryDelayGenerator(),
 				consumerSelector,
-				LoggerFactory.getLogger(configuration.getMessageBin().getName())
+				LoggerFactory.getLogger(messageBinName)
 		);
         activeSubscriptions.add(subscription);
         subscription.start();
@@ -119,7 +120,7 @@ public final class Subscriber {
 	 */
 	public void cancelAll() {
         activeSubscriptions.forEach(ActiveSubscription::cancel);
-        workPool.shutdownNow();
+        workPool.shutdown();
     }
 
 	public void addTimingEventListener(TimingEventListener timingEventListener) {
@@ -136,25 +137,26 @@ public final class Subscriber {
 
 		private final Client client;
 		private final MessageBin messageBin;
-		private final WorkPermitHolder workPermitHolder;
+		private final WorkPool.License subscriptionLicense;
+		private final WorkPool.License processingLicense;
 		private final RetryDelayGenerator retryDelayGenerator;
 		private final MessageConsumerSelector<M> consumerSelector;
 
-		private final Set<Future<?>> messageProcessingHandles = new HashSet<>();
-		private Future<?> messageCheckingHandle;
-		private boolean cancelled;
+		private boolean running;
 
 		ActiveSubscription(
 				Client client,
 				MessageBin messageBin,
-				WorkPermitHolder workPermitHolder,
+				WorkPool.License subscriptionLicense,
+				WorkPool.License processingLicense,
 				RetryDelayGenerator retryDelayGenerator,
 				MessageConsumerSelector<M> consumerSelector,
 				Logger logger
 		) {
 			this.client = client;
 			this.messageBin = messageBin;
-			this.workPermitHolder = workPermitHolder;
+			this.subscriptionLicense = subscriptionLicense;
+			this.processingLicense = processingLicense;
 			this.retryDelayGenerator = retryDelayGenerator;
 			this.consumerSelector = consumerSelector;
 			this.logger = logger;
@@ -162,41 +164,43 @@ public final class Subscriber {
 
 		@Override
 		public void start() {
-			if (messageCheckingHandle != null) {
+			if (running) {
 				return; // TODO Should we throw here instead?
 			}
 
-			messageCheckingHandle = workPool.submit(() -> {
-					while (true) {
-						try {
-							check();
-						} catch (InterruptedException e) {
-							if (cancelled) {
-								break;
-							}
-						} catch (Exception e) {
-							logger.error("Exception occurred while checking a subscription", e);
-						} catch (Error e) {
-							logger.error("Error occurred while checking a subscription", e);
-							throw e;
+			running = true;
+			workPool.submitTask(subscriptionLicense, () -> {
+				while (true) {
+					try {
+						check();
+					} catch (InterruptedException e) {
+						if (!running) {
+							break;
 						}
+					} catch (Exception e) {
+						logger.error("Exception occurred while checking a subscription", e);
+					} catch (Error e) {
+						logger.error("Error occurred while checking a subscription", e);
+						throw e;
 					}
+				}
 			});
 		}
 
 		@Override
 		public void cancel() {
-			if (messageCheckingHandle == null) {
+			if (!running) {
 				return;
 			}
 
 			logger.info("Cancelling subscription: '{}'", messageBin.getName());
-			cancelled = true;
-			messageCheckingHandle.cancel(true);
-			messageProcessingHandles.forEach(future -> future.cancel(true));
+			running = false;
+			workPool.cancelTasks(subscriptionLicense);
+			workPool.cancelTasks(processingLicense);
 		}
 
 		private void check() throws InterruptedException {
+			workPool.submitTasks(processingLicense, );
 			Queue<WorkPermitHolder.Permit> permits = new LinkedList<>(workPermitHolder.acquireAvailable());
 			int availableCapacity = permits.size();
 

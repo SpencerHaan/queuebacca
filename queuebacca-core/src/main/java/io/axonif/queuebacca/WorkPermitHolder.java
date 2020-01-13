@@ -30,6 +30,7 @@ import java.util.function.Consumer;
 public final class WorkPermitHolder {
 
 	private final BlockingQueue<Permit> issuedPermits;
+	private final int capacity;
 
 	/**
 	 * Creates a new instance of a {@link WorkPermitHolder} with the specified capacity.
@@ -42,6 +43,7 @@ public final class WorkPermitHolder {
 			throw new IllegalArgumentException("capacity must be greater than 0");
 		}
 		this.issuedPermits = new ArrayBlockingQueue<>(capacity, true);
+		this.capacity = capacity;
 	}
 
 	/**
@@ -75,6 +77,16 @@ public final class WorkPermitHolder {
 	 * @throws InterruptedException if the acquisition is interrupted
 	 */
 	public Collection<Permit> acquireAvailable() throws InterruptedException {
+		return acquireAvailable(capacity);
+	}
+
+	/**
+	 * Attempts to acquire all available permits, blocking until at least one is available.
+	 *
+	 * @return all acquired permits
+	 * @throws InterruptedException if the acquisition is interrupted
+	 */
+	public Collection<Permit> acquireAvailable(int limit) throws InterruptedException {
 		Permit permit = acquire();
 
 		List<Permit> acquiredPermits = new LinkedList<>();
@@ -84,7 +96,7 @@ public final class WorkPermitHolder {
 		do {
 			additionalPermit = tryAcquire();
 			additionalPermit.ifPresent(acquiredPermits::add);
-		} while (additionalPermit.isPresent());
+		} while (additionalPermit.isPresent() && acquiredPermits.size() != limit);
 		return acquiredPermits;
 	}
 
