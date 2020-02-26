@@ -57,9 +57,9 @@
 
   <distributionManagement>
     <repository>
-      <id>bintray-spencerhaan-io.axonif</id>
-      <name>spencerhaan-io.axonif</name>
-      <url>https://api.bintray.com/maven/spencerhaan/io.axonif/queuebacca/;publish=1</url>
+      <id>bintray-axonify-io.axonif</id>
+      <name>axonify-io.axonif</name>
+      <url>https://api.bintray.com/maven/axonify/io.axonif/queuebacca/;publish=1</url>
     </repository>
   </distributionManagement>
 
