@@ -14,10 +14,14 @@
  * limitations under the License.
  */
 
-package io.axonif.queuebacca;
+package io.axonif.queuebacca.subscribing;
 
 import static java.util.Objects.requireNonNull;
 
+import io.axonif.queuebacca.Message;
+import io.axonif.queuebacca.MessageBin;
+import io.axonif.queuebacca.MessageConsumer;
+import io.axonif.queuebacca.RetryDelayGenerator;
 import io.axonif.queuebacca.retries.ConstantRetryDelay;
 
 /**
@@ -32,13 +36,18 @@ public final class SubscriptionConfiguration<M extends Message> {
     private static final int DEFAULT_RETRY_DELAY = 5;
 
     private final MessageBin messageBin;
-    private final MessageConsumer<M> messageConsumer;
+    private final MessageConsumerSelector<M> messageConsumerSelector;
     private final RetryDelayGenerator retryDelayGenerator;
     private final int messageCapacity;
 
-    private SubscriptionConfiguration(MessageBin messageBin, MessageConsumer<M> messageConsumer, RetryDelayGenerator retryDelayGenerator, int messageCapacity) {
+    private SubscriptionConfiguration(
+            MessageBin messageBin,
+            MessageConsumerSelector<M> messageConsumerSelector,
+            RetryDelayGenerator retryDelayGenerator,
+            int messageCapacity
+    ) {
         this.messageBin = messageBin;
-        this.messageConsumer = messageConsumer;
+        this.messageConsumerSelector = messageConsumerSelector;
         this.retryDelayGenerator = retryDelayGenerator;
         this.messageCapacity = messageCapacity;
     }
@@ -67,8 +76,8 @@ public final class SubscriptionConfiguration<M extends Message> {
      *
      * @return the message consumer
      */
-    public MessageConsumer<M> getMessageConsumer() {
-        return messageConsumer;
+    public MessageConsumerSelector<M> getMessageConsumers() {
+        return messageConsumerSelector;
     }
 
     /**
@@ -96,15 +105,20 @@ public final class SubscriptionConfiguration<M extends Message> {
      */
     public static class Builder<M extends Message> {
 
+        private final MessageConsumerSelector.Builder<M> messageConsumerSelectorBuilder;
         private final MessageBin messageBin;
-        private final MessageConsumer<M> messageConsumer;
 
         private RetryDelayGenerator retryDelayGenerator = new ConstantRetryDelay(DEFAULT_RETRY_DELAY);
         private int messageCapacity = DEFAULT_MESSAGE_CAPACITY;
 
-        private Builder(MessageBin messageBin, MessageConsumer<M> messageConsumer) {
+        private Builder(MessageBin messageBin, MessageConsumer<M> primaryMessageConsumer) {
             this.messageBin = requireNonNull(messageBin);
-            this.messageConsumer = requireNonNull(messageConsumer);
+            this.messageConsumerSelectorBuilder = MessageConsumerSelector.builder(primaryMessageConsumer);
+        }
+
+        public Builder<M> withNextFallbackMessageConsumer(int readCountThreshold, MessageConsumer<M> fallbackMessageConsumer) {
+            messageConsumerSelectorBuilder.addNextConsumer(readCountThreshold, fallbackMessageConsumer);
+            return this;
         }
 
         /**
@@ -135,7 +149,7 @@ public final class SubscriptionConfiguration<M extends Message> {
          * @return the subscription configuration
          */
         public SubscriptionConfiguration<M> build() {
-            return new SubscriptionConfiguration<>(messageBin, messageConsumer, retryDelayGenerator, messageCapacity);
+            return new SubscriptionConfiguration<>(messageBin, messageConsumerSelectorBuilder.build(), retryDelayGenerator, messageCapacity);
         }
     }
 }

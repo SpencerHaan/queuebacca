@@ -133,24 +133,17 @@ public final class SqsCourierMessageBinRegistry {
 
         configuration = configuration.subset(SQS_QUEUE_PREFIX).subset(courier.getName());
 
-        MessageBin processingBin = courier.getProcessingBin();
+        MessageBin processingBin = courier.getMessageBin();
         String processingQueueUrl = registerMessageBin(processingBin, courier.getVisibilityTimeout());
 
-        MessageBin recyclingBin = courier.getRecyclingBin();
-        String recyclingQueueUrl = registerMessageBin(recyclingBin, courier.getVisibilityTimeout());
-
         if (allowProvisioning) {
-            SqsRedrivePolicy processingRedrivePolicy = SqsRedrivePolicy.create(configuration.getInt("retries", DEFAULT_RETRIES), getQueueArn(recyclingQueueUrl));
-            setQueueAttributes(processingQueueUrl, courier.getVisibilityTimeout(), configuration.subset(SQS_QUEUE_PROCESSING), processingRedrivePolicy, kmsMasterKeyId);
-
-            SqsRedrivePolicy recyclingRedrivePolicy = trashQueueUrl != null
-                    ? SqsRedrivePolicy.create(configuration.getInt("retriesRecycling", DEFAULT_RETRIES_RECYCLING), getQueueArn(trashQueueUrl))
+            SqsRedrivePolicy redrivePolicy = trashQueueUrl != null
+                    ? SqsRedrivePolicy.create(configuration.getInt("retries", DEFAULT_RETRIES), getQueueArn(trashQueueUrl))
                     : SqsRedrivePolicy.NONE;
-            setQueueAttributes(recyclingQueueUrl,  courier.getVisibilityTimeout(), configuration.subset(SQS_QUEUE_RECYCLING), recyclingRedrivePolicy, kmsMasterKeyId);
+            setQueueAttributes(processingQueueUrl, courier.getVisibilityTimeout(), configuration.subset(SQS_QUEUE_PROCESSING), redrivePolicy, kmsMasterKeyId);
 
             if (!courier.getTags().isEmpty()) {
                 setTags(processingQueueUrl, courier.getTags(), configuration);
-                setTags(recyclingQueueUrl, courier.getTags(), configuration);
             }
             LOGGER.info("Provisioned queues for courier '{}'", courier.getName());
         }
