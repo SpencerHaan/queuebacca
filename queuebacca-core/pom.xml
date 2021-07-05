@@ -20,7 +20,7 @@
 
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>io.axonif</groupId>
+    <groupId>dev.haan</groupId>
     <artifactId>queuebacca</artifactId>
     <version>${revision}</version>
   </parent>

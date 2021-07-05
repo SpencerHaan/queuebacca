@@ -20,9 +20,9 @@
 
   <modelVersion>4.0.0</modelVersion>
   <parent>
-    <groupId>io.axonif</groupId>
+    <groupId>dev.haan</groupId>
     <artifactId>queuebacca</artifactId>
-    <version>${revision}</version>
+    <version>0.4.2</version>
   </parent>
 
   <artifactId>queuebacca-sqs</artifactId>
@@ -31,7 +31,7 @@
 
   <dependencies>
     <dependency>
-      <groupId>io.axonif</groupId>
+      <groupId>dev.haan</groupId>
       <artifactId>queuebacca-core</artifactId>
     </dependency>
     <dependency>

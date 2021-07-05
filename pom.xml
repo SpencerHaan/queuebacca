@@ -18,7 +18,7 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 
   <modelVersion>4.0.0</modelVersion>
-  <groupId>io.axonif</groupId>
+  <groupId>dev.haan</groupId>
   <artifactId>queuebacca</artifactId>
   <version>${revision}</version>
   <packaging>pom</packaging>
@@ -34,7 +34,7 @@
 
   <name>queuebacca</name>
   <description>An extensible framework for simplifying and enhancing the production and consumption of messages.</description>
-  <url>https://github.com/Axonify/queuebacca</url>
+  <url>https://github.com/SpencerHaan/queuebacca</url>
   <licenses>
     <license>
       <name>The Apache Software License, Version 2.0</name>
@@ -44,24 +44,14 @@
   <developers>
     <developer>
       <name>Spencer Haan</name>
-      <email>haan.spencer@gmail.com</email>
-      <organization>Axonify Inc.</organization>
-      <organizationUrl>https://axonify.com/</organizationUrl>
+      <email>spencer@haan.dev</email>
     </developer>
   </developers>
   <scm>
-    <connection>https://github.com/Axonify/queuebacca.git</connection>
-    <developerConnection>https://github.com/Axonify/queuebacca.git</developerConnection>
-    <url>https://github.com/Axonify/queuebacca</url>
+    <connection>https://github.com/SpencerHaan/queuebacca.git</connection>
+    <developerConnection>https://github.com/SpencerHaan/queuebacca.git</developerConnection>
+    <url>https://github.com/SpencerHaan/queuebacca</url>
   </scm>
-
-  <distributionManagement>
-    <repository>
-      <id>bintray-axonify-io.axonif</id>
-      <name>axonify-io.axonif</name>
-      <url>https://api.bintray.com/maven/axonify/io.axonif/queuebacca/;publish=1</url>
-    </repository>
-  </distributionManagement>
 
   <dependencyManagement>
     <dependencies>
